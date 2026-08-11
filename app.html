@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dahua Camera Viewer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- LOGIN -->
+  <div id="login-screen" class="login-body">
+    <form id="login" class="card login-card" autocomplete="on">
+      <h1>Dahua Camera Viewer</h1>
+      <p class="sub">Connect directly to your NVR / DVR / camera</p>
+      <label>IP address
+        <input name="ip" placeholder="192.168.0.138" required />
+      </label>
+      <label>HTTP port
+        <input name="port" value="80" inputmode="numeric" />
+      </label>
+      <label>Username
+        <input name="user" placeholder="admin" required autocomplete="username" />
+      </label>
+      <label>Password
+        <input name="pass" type="password" required autocomplete="current-password" />
+      </label>
+      <label class="check"><input type="checkbox" name="remember" checked /> Remember on this computer</label>
+      <button type="submit" id="submit">Connect</button>
+      <p id="login-msg" class="msg" role="status"></p>
+    </form>
+  </div>
+
+  <!-- APP -->
+  <div id="app-screen" class="hidden">
+    <header class="topbar">
+      <div class="brand"><strong>Cameras</strong><span id="device" class="muted"></span></div>
+      <div class="spacer"></div>
+      <div class="seg" role="tablist">
+        <button class="seg-btn active" data-view="live" role="tab">Live</button>
+        <button class="seg-btn" data-view="recordings" role="tab">Recordings</button>
+      </div>
+      <button id="logout" class="ghost">Sign out</button>
+    </header>
+
+    <main id="view-live" class="view">
+      <div id="grid" class="grid"></div>
+    </main>
+
+    <main id="view-recordings" class="view hidden">
+      <div class="toolbar">
+        <label class="inline">Camera <select id="rec-camera"></select></label>
+        <label class="inline">Date <input id="rec-date" type="date" /></label>
+        <button id="rec-search">Search</button>
+        <span id="rec-status" class="muted"></span>
+      </div>
+      <ul id="rec-list" class="rec-list"></ul>
+    </main>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

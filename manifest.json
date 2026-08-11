@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Dahua Camera Viewer",
+  "version": "1.0.0",
+  "description": "Plugin-free viewer for Dahua NVR/DVR/IP cameras: live MJPEG + recordings, directly over your LAN. No server required.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://*/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Open Dahua Camera Viewer" }
+}

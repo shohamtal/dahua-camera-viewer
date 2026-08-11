@@ -1,0 +1,64 @@
+:root {
+  --bg:#0f1216; --card:#171b22; --card-h:#1e232c; --text:#e8eaed;
+  --muted:#9aa4b2; --accent:#4f8cff; --border:#2a303a; --danger:#ff6b6b;
+}
+@media (prefers-color-scheme: light) {
+  :root { --bg:#f4f6f9; --card:#fff; --card-h:#eef1f6; --text:#1a1d22; --muted:#5b6472; --border:#e2e6ec; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100vh; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", "Noto Sans Hebrew", Arial, sans-serif; line-height: 1.5; }
+button, input, select { font: inherit; color: inherit; }
+.muted { color: var(--muted); font-weight: 400; }
+.hidden { display: none !important; }
+
+/* login */
+.login-body { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+.login-card { width: 100%; max-width: 380px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 26px; }
+.login-card h1 { margin: 0 0 2px; font-size: 1.4rem; }
+.login-card .sub { margin: 0 0 20px; color: var(--muted); }
+.login-card label { display: block; margin-bottom: 14px; font-size: .85rem; color: var(--muted); }
+.login-card label.check { display: flex; align-items: center; gap: 8px; }
+.login-card label.check input { width: auto; margin: 0; }
+input, select { width: 100%; margin-top: 6px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); }
+input:focus, select:focus { outline: none; border-color: var(--accent); }
+button { cursor: pointer; border: 1px solid var(--border); background: var(--card-h); color: var(--text); border-radius: 10px; padding: 10px 16px; }
+button:hover { background: var(--border); }
+#submit { width: 100%; margin-top: 8px; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; padding: 12px; }
+#submit:disabled { opacity: .6; cursor: default; }
+.msg { margin: 12px 0 0; min-height: 1.2em; font-size: .9rem; }
+.msg.error { color: var(--danger); }
+
+/* shell */
+.topbar { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--card); position: sticky; top: 0; z-index: 5; }
+.brand { display: flex; flex-direction: column; line-height: 1.25; }
+.brand .muted { font-size: .78rem; }
+.spacer { flex: 1; }
+.ghost { background: transparent; border-color: transparent; }
+.ghost:hover { background: var(--card-h); }
+.seg { display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.seg-btn { border: 0; border-radius: 0; background: transparent; padding: 8px 16px; }
+.seg-btn.active { background: var(--accent); color: #fff; }
+.view { padding: 18px; }
+.toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.inline { display: inline-flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--muted); }
+.inline select, .inline input { width: auto; margin: 0; }
+
+/* live grid */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.tile { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.tile-video { position: relative; aspect-ratio: 16 / 9; background: #000; }
+.tile-video img { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.tile-status { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: .9rem; background: #000; pointer-events: none; }
+.tile-label { padding: 10px 14px; font-size: .9rem; }
+
+/* recordings */
+.rec-list { list-style: none; margin: 0; padding: 0; max-width: 760px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.rec-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.rec-item:last-child { border-bottom: 0; }
+.rec-main { display: flex; flex-direction: column; gap: 2px; }
+.rec-time { font-variant-numeric: tabular-nums; }
+.rec-actions { display: flex; align-items: center; gap: 8px; }
+.rec-actions button { font-size: .8rem; padding: 6px 12px; }
+.dl-progress { font-size: .78rem; color: var(--muted); min-width: 64px; text-align: right; }
