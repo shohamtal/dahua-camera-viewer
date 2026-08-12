@@ -1,4 +1,5 @@
 import * as dahua from './lib/dahua.js';
+import { playRecording } from './lib/h264play.js';
 
 // ---- persistent creds (extension storage, localStorage fallback) ---------
 const hasChromeStore = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
@@ -89,8 +90,10 @@ function startLive() {
   for (const cam of cameras) {
     const img = el('img');
     const status = el('div', { className: 'tile-status', textContent: 'Connecting…' });
-    const tile = el('div', { className: 'tile' },
-      el('div', { className: 'tile-video' }, img, status),
+    const videoWrap = el('div', { className: 'tile-video' }, img, status);
+    videoWrap.title = 'Click for fullscreen';
+    videoWrap.addEventListener('click', () => openFullscreen(cam));
+    const tile = el('div', { className: 'tile' }, videoWrap,
       el('div', { className: 'tile-label' }, `${cam.name} · ch ${cam.channel}`));
     grid.append(tile);
 
@@ -113,6 +116,59 @@ function startLive() {
   }
 }
 
+// ---- fullscreen single camera -------------------------------------------
+let fsAbort = null, fsLastUrl = null;
+function openFullscreen(cam) {
+  closeFullscreen();
+  stopLive(); // free the grid's connections so the single view is smooth
+  const modal = $('modal'), img = $('modal-img'), status = $('modal-status');
+  $('modal-title').textContent = `${cam.name} · ch ${cam.channel}`;
+  img.removeAttribute('src'); status.style.display = 'grid'; status.textContent = 'Connecting…';
+  modal.classList.remove('hidden');
+  fsAbort = new AbortController();
+  dahua.streamMjpeg(conn, cam.channel, 1, (blob) => {
+    status.style.display = 'none';
+    const url = URL.createObjectURL(blob);
+    const probe = new Image();
+    probe.onload = () => { img.src = url; if (fsLastUrl) URL.revokeObjectURL(fsLastUrl); fsLastUrl = url; };
+    probe.onerror = () => URL.revokeObjectURL(url);
+    probe.src = url;
+  }, fsAbort.signal).catch((e) => { if (e.name !== 'AbortError') { status.style.display = 'grid'; status.textContent = 'No signal'; } });
+}
+function closeFullscreen() {
+  const wasOpen = !$('modal').classList.contains('hidden');
+  if (fsAbort) { fsAbort.abort(); fsAbort = null; }
+  if (fsLastUrl) { URL.revokeObjectURL(fsLastUrl); fsLastUrl = null; }
+  $('modal').classList.add('hidden');
+  $('modal-img').removeAttribute('src');
+  // Resume the grid if we're still on the Live tab.
+  if (wasOpen && !$('view-live').classList.contains('hidden')) startLive();
+}
+$('modal-close').addEventListener('click', closeFullscreen);
+$('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeFullscreen(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeFullscreen(); });
+
+// ---- recording playback (WebCodecs) -------------------------------------
+let playCtl = null;
+function openPlayback(rec, channel) {
+  closePlayback();
+  $('play-title').textContent = `${timeOnly(rec.startTime)} → ${timeOnly(rec.endTime)} · ch ${channel}`;
+  const status = $('play-status');
+  status.style.display = 'grid'; status.textContent = 'Buffering…';
+  $('play-modal').classList.remove('hidden');
+  if (!('VideoDecoder' in window)) { status.textContent = 'This browser has no WebCodecs support'; return; }
+  playCtl = playRecording(conn, channel, rec.startTime, rec.endTime, $('play-canvas'), {
+    onStatus: (t) => { if (t) { status.style.display = 'grid'; status.textContent = t; } else status.style.display = 'none'; },
+  });
+}
+function closePlayback() {
+  if (playCtl) { playCtl.stop(); playCtl = null; }
+  $('play-modal').classList.add('hidden');
+}
+$('play-close').addEventListener('click', closePlayback);
+$('play-modal').addEventListener('click', (e) => { if (e.target.id === 'play-modal') closePlayback(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePlayback(); });
+
 // ---- recordings ----------------------------------------------------------
 const fmtDur = (s) => s ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` : '';
 const fmtSize = (b) => { if (!b) return ''; const u = ['B', 'KB', 'MB', 'GB']; let i = 0, n = b; while (n >= 1024 && i < 3) { n /= 1024; i++; } return `${n.toFixed(1)} ${u[i]}`; };
@@ -133,12 +189,14 @@ async function searchRecordings() {
     status.textContent = recs.length ? `${recs.length} clip(s)` : 'No recordings found';
     for (const rec of recs) {
       const prog = el('span', { className: 'dl-progress' });
+      const playBtn = el('button', { textContent: 'Play' });
       const dlBtn = el('button', { textContent: 'Download' });
       const item = el('li', { className: 'rec-item' },
         el('div', { className: 'rec-main' },
           el('span', { className: 'rec-time', textContent: `${timeOnly(rec.startTime)} → ${timeOnly(rec.endTime)}` }),
           el('span', { className: 'muted', textContent: `${fmtDur(rec.durationSec)} · ${fmtSize(rec.length)}${rec.type ? ' · ' + rec.type : ''}` })),
-        el('div', { className: 'rec-actions' }, prog, dlBtn));
+        el('div', { className: 'rec-actions' }, prog, playBtn, dlBtn));
+      playBtn.addEventListener('click', () => openPlayback(rec, channel));
       dlBtn.addEventListener('click', () => downloadClip(rec, channel, dlBtn, prog));
       list.append(item);
     }

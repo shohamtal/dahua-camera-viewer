@@ -50,8 +50,16 @@ button:hover { background: var(--border); }
 .tile { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .tile-video { position: relative; aspect-ratio: 16 / 9; background: #000; }
 .tile-video img { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.tile-video { cursor: pointer; }
 .tile-status { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: .9rem; background: #000; pointer-events: none; }
 .tile-label { padding: 10px 14px; font-size: .9rem; }
+
+/* fullscreen / playback modal */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.82); display: grid; place-items: center; z-index: 30; padding: 20px; }
+.modal-inner { width: min(1200px, 96vw); background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.modal-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.modal-video { position: relative; background: #000; aspect-ratio: 16 / 9; }
+.modal-video img, .modal-video canvas { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
 
 /* recordings */
 .rec-list { list-style: none; margin: 0; padding: 0; max-width: 760px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }

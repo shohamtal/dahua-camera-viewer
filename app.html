@@ -46,6 +46,28 @@
       <div id="grid" class="grid"></div>
     </main>
 
+    <!-- Fullscreen single-camera live -->
+    <div id="modal" class="modal hidden">
+      <div class="modal-inner">
+        <div class="modal-head">
+          <span id="modal-title"></span>
+          <button id="modal-close" class="ghost">✕</button>
+        </div>
+        <div class="modal-video"><img id="modal-img" alt="" /><div id="modal-status" class="tile-status">Connecting…</div></div>
+      </div>
+    </div>
+
+    <!-- Recording playback (WebCodecs) -->
+    <div id="play-modal" class="modal hidden">
+      <div class="modal-inner">
+        <div class="modal-head">
+          <span id="play-title"></span>
+          <button id="play-close" class="ghost">✕</button>
+        </div>
+        <div class="modal-video"><canvas id="play-canvas"></canvas><div id="play-status" class="tile-status">Buffering…</div></div>
+      </div>
+    </div>
+
     <main id="view-recordings" class="view hidden">
       <div class="toolbar">
         <label class="inline">Camera <select id="rec-camera"></select></label>
