@@ -17,7 +17,6 @@ const store = {
 
 let conn = null;
 let cameras = [];
-let liveAborts = [];
 
 // ---- element helper ------------------------------------------------------
 function el(tag, props = {}, ...kids) {
@@ -77,42 +76,89 @@ document.querySelectorAll('.seg-btn').forEach((b) => b.addEventListener('click',
   if (live) startLive(); else stopLive();
 }));
 
-// ---- live grid (MJPEG) ---------------------------------------------------
+// ---- live grid: snapshot thumbnails, stream on demand --------------------
+// Thumbnails load SEQUENTIALLY (the NVR rate-limits parallel snapshots), then
+// refresh on a slow cycle. Each tile streams live only when clicked.
+let liveItems = [];
+let thumbToken = 0;
+
 function stopLive() {
-  liveAborts.forEach((a) => a.abort());
-  liveAborts = [];
+  thumbToken++; // cancel the running loop
+  liveItems.forEach((it) => it.dispose());
+  liveItems = [];
   $('grid').replaceChildren();
 }
 
 function startLive() {
   stopLive();
   const grid = $('grid');
-  for (const cam of cameras) {
-    const img = el('img');
-    const status = el('div', { className: 'tile-status', textContent: 'Connecting…' });
-    const videoWrap = el('div', { className: 'tile-video' }, img, status);
-    videoWrap.title = 'Click for fullscreen';
-    videoWrap.addEventListener('click', () => openFullscreen(cam));
-    const tile = el('div', { className: 'tile' }, videoWrap,
-      el('div', { className: 'tile-label' }, `${cam.name} · ch ${cam.channel}`));
-    grid.append(tile);
+  for (const cam of cameras) grid.append(buildTile(cam));
+  runThumbLoop(++thumbToken);
+}
 
-    const ctrl = new AbortController();
-    liveAborts.push(ctrl);
-    let got = false, lastUrl = null;
-    const timer = setTimeout(() => { if (!got) status.textContent = 'No signal'; }, 12000);
+function buildTile(cam) {
+  const img = el('img');
+  const status = el('div', { className: 'tile-status', textContent: '…' });
+  const liveBtn = el('button', { className: 'tile-btn', textContent: '▶', title: 'Start live' });
+  const fsBtn = el('button', { className: 'tile-btn', textContent: '⤢', title: 'Fullscreen' });
+  const videoWrap = el('div', { className: 'tile-video' }, img, status, el('div', { className: 'tile-btns' }, liveBtn, fsBtn));
+  const tile = el('div', { className: 'tile' }, videoWrap,
+    el('div', { className: 'tile-label' }, `${cam.name} · ch ${cam.channel}`));
+
+  let liveAbort = null, lastUrl = null, isLive = false;
+  const swap = (url) => { img.src = url; status.style.display = 'none'; if (lastUrl) URL.revokeObjectURL(lastUrl); lastUrl = url; };
+  function startInline() {
+    if (isLive) return;
+    isLive = true; liveBtn.textContent = '⏹'; liveBtn.title = 'Stop live'; status.style.display = 'none';
+    liveAbort = new AbortController();
     dahua.streamMjpeg(conn, cam.channel, 1, (blob) => {
-      got = true; clearTimeout(timer); status.style.display = 'none';
-      // Decode off-screen first so a partial/corrupt frame never flashes on-screen.
-      const url = URL.createObjectURL(blob);
-      const probe = new Image();
-      probe.onload = () => { img.src = url; if (lastUrl) URL.revokeObjectURL(lastUrl); lastUrl = url; };
-      probe.onerror = () => URL.revokeObjectURL(url);
-      probe.src = url;
-    }, ctrl.signal).catch((err) => {
-      if (err.name === 'AbortError') return;
-      clearTimeout(timer); status.style.display = 'grid'; status.textContent = 'No signal';
-    });
+      const url = URL.createObjectURL(blob); const probe = new Image();
+      probe.onload = () => swap(url); probe.onerror = () => URL.revokeObjectURL(url); probe.src = url;
+    }, liveAbort.signal).catch((e) => { if (e.name !== 'AbortError' && !img.src) { status.style.display = 'grid'; status.textContent = 'No signal'; } });
+  }
+  function stopInline() {
+    if (!isLive) return;
+    isLive = false; liveBtn.textContent = '▶'; liveBtn.title = 'Start live';
+    if (liveAbort) { liveAbort.abort(); liveAbort = null; }
+  }
+  liveBtn.addEventListener('click', (e) => { e.stopPropagation(); isLive ? stopInline() : startInline(); });
+  fsBtn.addEventListener('click', (e) => { e.stopPropagation(); openFullscreen(cam); });
+  videoWrap.addEventListener('click', () => (isLive ? stopInline() : startInline()));
+
+  // Instant thumbnail: grab a single substream frame, then close. The slow,
+  // sharp snapshot upgrade arrives via the sequential thumb loop.
+  const ffAbort = new AbortController();
+  let gotFF = false;
+  dahua.streamMjpeg(conn, cam.channel, 1, (blob) => {
+    if (gotFF) return; gotFF = true;
+    if (!isLive) swap(URL.createObjectURL(blob));
+    ffAbort.abort();
+  }, ffAbort.signal).catch(() => {});
+
+  liveItems.push({
+    channel: cam.channel,
+    isLive: () => isLive,
+    hasImg: () => !!img.src,
+    setThumb: (url) => { if (!isLive) swap(url); },
+    noSignal: () => { if (!img.src) { status.style.display = 'grid'; status.textContent = 'No signal'; } },
+    dispose: () => { try { ffAbort.abort(); } catch {} if (liveAbort) liveAbort.abort(); if (lastUrl) URL.revokeObjectURL(lastUrl); },
+  });
+  return tile;
+}
+
+async function runThumbLoop(token) {
+  while (token === thumbToken) {
+    for (const it of liveItems) {
+      if (token !== thumbToken) return;
+      if (it.isLive()) continue;
+      try {
+        const blob = await dahua.snapshotBlob(conn, it.channel);
+        if (token !== thumbToken) return;
+        it.setThumb(URL.createObjectURL(blob));
+      } catch { it.noSignal(); }
+      await new Promise((r) => setTimeout(r, 150)); // gap between sequential requests
+    }
+    await new Promise((r) => setTimeout(r, 15000)); // slow refresh cycle
   }
 }
 
@@ -120,7 +166,6 @@ function startLive() {
 let fsAbort = null, fsLastUrl = null;
 function openFullscreen(cam) {
   closeFullscreen();
-  stopLive(); // free the grid's connections so the single view is smooth
   const modal = $('modal'), img = $('modal-img'), status = $('modal-status');
   $('modal-title').textContent = `${cam.name} · ch ${cam.channel}`;
   img.removeAttribute('src'); status.style.display = 'grid'; status.textContent = 'Connecting…';
@@ -136,35 +181,59 @@ function openFullscreen(cam) {
   }, fsAbort.signal).catch((e) => { if (e.name !== 'AbortError') { status.style.display = 'grid'; status.textContent = 'No signal'; } });
 }
 function closeFullscreen() {
-  const wasOpen = !$('modal').classList.contains('hidden');
   if (fsAbort) { fsAbort.abort(); fsAbort = null; }
   if (fsLastUrl) { URL.revokeObjectURL(fsLastUrl); fsLastUrl = null; }
   $('modal').classList.add('hidden');
   $('modal-img').removeAttribute('src');
-  // Resume the grid if we're still on the Live tab.
-  if (wasOpen && !$('view-live').classList.contains('hidden')) startLive();
 }
 $('modal-close').addEventListener('click', closeFullscreen);
 $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeFullscreen(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeFullscreen(); });
 
-// ---- recording playback (WebCodecs) -------------------------------------
-let playCtl = null;
+// ---- recording playback (WebCodecs) + timeline ---------------------------
+let playCtl = null, pbRec = null, pbChannel = null, pbDur = 0, pbBase = 0, pbPos = 0, pbSeeking = false;
+const two = (n) => String(n).padStart(2, '0');
+function fmtHMS(sec) { sec = Math.max(0, Math.floor(sec)); return `${two(sec / 3600 | 0)}:${two((sec / 60 | 0) % 60)}:${two(sec % 60)}`; }
+function addSeconds(str, sec) {
+  const m = str.match(/(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)/);
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6] + sec);
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
+}
+function setPos(pos) { pbPos = pos; if (!pbSeeking) { $('pb-seek').value = pos; $('pb-cur').textContent = fmtHMS(pos); } }
+
 function openPlayback(rec, channel) {
   closePlayback();
+  pbRec = rec; pbChannel = channel; pbDur = rec.durationSec || 0;
   $('play-title').textContent = `${timeOnly(rec.startTime)} → ${timeOnly(rec.endTime)} · ch ${channel}`;
-  const status = $('play-status');
-  status.style.display = 'grid'; status.textContent = 'Buffering…';
+  $('pb-seek').max = pbDur; $('pb-seek').value = 0; $('pb-dur').textContent = fmtHMS(pbDur); $('pb-cur').textContent = '00:00:00';
   $('play-modal').classList.remove('hidden');
-  if (!('VideoDecoder' in window)) { status.textContent = 'This browser has no WebCodecs support'; return; }
-  playCtl = playRecording(conn, channel, rec.startTime, rec.endTime, $('play-canvas'), {
+  if (!('VideoDecoder' in window)) { const s = $('play-status'); s.style.display = 'grid'; s.textContent = 'This browser has no WebCodecs support'; return; }
+  startPlaybackAt(0);
+}
+function startPlaybackAt(sec) {
+  sec = Math.max(0, Math.min(pbDur ? pbDur - 1 : sec, sec));
+  if (playCtl) playCtl.stop();
+  pbBase = sec; setPos(sec);
+  $('pb-toggle').textContent = '⏸';
+  const status = $('play-status'); status.style.display = 'grid'; status.textContent = 'Buffering…';
+  playCtl = playRecording(conn, pbChannel, addSeconds(pbRec.startTime, sec), pbRec.endTime, $('play-canvas'), {
     onStatus: (t) => { if (t) { status.style.display = 'grid'; status.textContent = t; } else status.style.display = 'none'; },
+    onProgress: (p) => setPos(pbBase + p),
   });
 }
 function closePlayback() {
   if (playCtl) { playCtl.stop(); playCtl = null; }
   $('play-modal').classList.add('hidden');
 }
+$('pb-toggle').addEventListener('click', () => {
+  if (!playCtl) return;
+  if (playCtl.paused) { playCtl.resume(); $('pb-toggle').textContent = '⏸'; }
+  else { playCtl.pause(); $('pb-toggle').textContent = '▶'; }
+});
+$('pb-back').addEventListener('click', () => startPlaybackAt(pbPos - 60));
+$('pb-fwd').addEventListener('click', () => startPlaybackAt(pbPos + 60));
+$('pb-seek').addEventListener('input', () => { pbSeeking = true; $('pb-cur').textContent = fmtHMS(+$('pb-seek').value); });
+$('pb-seek').addEventListener('change', () => { const v = +$('pb-seek').value; pbSeeking = false; startPlaybackAt(v); });
 $('play-close').addEventListener('click', closePlayback);
 $('play-modal').addEventListener('click', (e) => { if (e.target.id === 'play-modal') closePlayback(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePlayback(); });

@@ -65,6 +65,14 @@
           <button id="play-close" class="ghost">✕</button>
         </div>
         <div class="modal-video"><canvas id="play-canvas"></canvas><div id="play-status" class="tile-status">Buffering…</div></div>
+        <div class="play-controls">
+          <button id="pb-back" title="Back 1 min">⏮</button>
+          <button id="pb-toggle" title="Play/Pause">⏸</button>
+          <button id="pb-fwd" title="Forward 1 min">⏭</button>
+          <span id="pb-cur" class="pb-time">00:00:00</span>
+          <input id="pb-seek" class="pb-seek" type="range" min="0" max="100" value="0" step="1" />
+          <span id="pb-dur" class="pb-time">00:00:00</span>
+        </div>
       </div>
     </div>
 
