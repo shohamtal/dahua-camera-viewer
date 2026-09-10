@@ -15,6 +15,16 @@ const store = {
     : Promise.resolve(localStorage.removeItem('conn')),
 };
 
+// ---- host permission (requested per-device at runtime, not broad at install) --
+const hasPerms = typeof chrome !== 'undefined' && chrome.permissions;
+const hostOrigins = (host) => [`http://${host}/*`, `https://${host}/*`];
+const hasHostPermission = (host) => hasPerms
+  ? new Promise((r) => chrome.permissions.contains({ origins: hostOrigins(host) }, r))
+  : Promise.resolve(true);
+const requestHostPermission = (host) => hasPerms
+  ? new Promise((r) => chrome.permissions.request({ origins: hostOrigins(host) }, r))
+  : Promise.resolve(true);
+
 let conn = null;
 let cameras = [];
 
@@ -35,6 +45,8 @@ loginForm.addEventListener('submit', async (e) => {
   const f = Object.fromEntries(new FormData(loginForm).entries());
   const candidate = { host: f.ip.trim(), port: parseInt(f.port, 10) || 80, user: f.user, pass: f.pass };
   try {
+    // Ask for access to just this device's host (this click is the user gesture).
+    if (!(await requestHostPermission(candidate.host))) throw new Error('access to this device was not granted');
     const device = await dahua.deviceInfo(candidate);
     if (!device.type && !device.serial) throw new Error('no response from device');
     candidate.device = device;
@@ -313,7 +325,9 @@ const pct = (done, total) => total ? Math.min(100, Math.round(done / total * 100
 // ---- boot ----------------------------------------------------------------
 (async function init() {
   const saved = await store.get();
-  if (saved && saved.host) {
+  // Auto-connect only if we already hold permission for this host (can't prompt
+  // without a user gesture at boot — the user re-grants by clicking Connect).
+  if (saved && saved.host && await hasHostPermission(saved.host)) {
     try { saved.device = await dahua.deviceInfo(saved); conn = saved; await enterApp(); return; }
     catch { /* fall through to login */ }
   }

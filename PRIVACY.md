@@ -32,10 +32,12 @@ browser to a camera / NVR / DVR device that **you** own and configure.
 
 - **`storage`** — to optionally remember your device connection details on your
   computer.
-- **Host permissions (`http://*/*`, `https://*/*`)** — a camera can live at any IP
-  address on your network (or a remote address you set up), which isn't known ahead
-  of time, so the extension must be able to contact the host you type in. It only
-  ever contacts that host.
+- **Host access (optional, per-device)** — a camera can live at any IP address on
+  your network (or a remote address you set up), which isn't known ahead of time.
+  Host access is declared as an **optional** permission and is **requested at
+  runtime for only the specific host you connect to** (e.g. `http://192.168.1.108/*`)
+  when you click Connect — not granted broadly at install time. The extension only
+  ever contacts the host you enter.
 
 ## Your control
 

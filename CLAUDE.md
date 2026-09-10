@@ -17,7 +17,7 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 
 | File | Role |
 |---|---|
-| `manifest.json` | MV3 manifest. `host_permissions` = `http/https://*/*` (needed to reach any device IP). Only other permission is `storage`. |
+| `manifest.json` | MV3 manifest. Host access is **`optional_host_permissions`** (`http/https://*/*`) — requested at runtime for only the host the user connects to (see `app.js` `requestHostPermission`), so there's no broad install-time grant. Only static permission is `storage`. |
 | `background.js` | Service worker. Sole job: open `app.html` in a tab when the toolbar icon is clicked. |
 | `app.html` | Login screen + app shell (Live/Recordings tabs, fullscreen modal, playback modal). |
 | `app.js` | All UI logic: login, live grid (thumbnails + on-demand streaming), fullscreen, recordings search, playback controls/timeline. |

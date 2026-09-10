@@ -57,11 +57,15 @@ Used to optionally remember the user's device connection details (IP, port,
 username, password) locally on their own computer so they don't re-enter them each
 time. Nothing is transmitted off-device.
 
-host permissions (http/https ://*/*):
+host permissions (optional_host_permissions http/https ://*/*):
 Cameras/NVRs can be at any IP address on the user's network (or a remote address the
-user configures), which is not known in advance. The extension must contact the
-host the user types in. It only ever contacts that user-provided host and no other
-server.
+user configures), which is not known in advance, so specific hosts cannot be listed
+in the manifest. Host access is declared as OPTIONAL and requested at runtime via
+chrome.permissions.request() for ONLY the single host the user types in, on the
+Connect click (user gesture). The extension contacts only that user-provided host
+and no other server. activeTab does not apply: the extension has no content scripts
+and never interacts with web-page tabs; it fetches from the device from its own
+extension page.
 
 Remote code: No. All code is bundled in the package; nothing is fetched/eval'd.
 
