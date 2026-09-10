@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Store icon: 96x96 content, 16px transparent padding, no full-bleed background -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f74d6"/>
+      <stop offset="1" stop-color="#1f93a6"/>
+    </linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- tile (with soft shadow for light bg + faint light edge for dark bg) -->
+  <rect x="16" y="16" width="96" height="96" rx="22" fill="url(#tile)" filter="url(#sh)"
+        stroke="#ffffff" stroke-opacity="0.15" stroke-width="1"/>
+
+  <!-- dome camera -->
+  <g fill="#ffffff">
+    <rect x="50" y="22" width="44" height="12" rx="6"/>
+    <path d="M50 34 A22 22 0 0 0 94 34 Z"/>
+  </g>
+  <circle cx="72" cy="45" r="8.5" fill="#15507f"/>
+  <circle cx="72" cy="45" r="4" fill="#2f74d6"/>
+  <circle cx="68.5" cy="41.5" r="2" fill="#ffffff"/>
+
+  <!-- 2x2 grid (the live view) -->
+  <g fill="#ffffff">
+    <rect x="22" y="60" width="11" height="11" rx="2.5"/>
+    <rect x="37" y="60" width="11" height="11" rx="2.5"/>
+    <rect x="22" y="75" width="11" height="11" rx="2.5"/>
+    <rect x="37" y="75" width="11" height="11" rx="2.5"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="64" y="106" text-anchor="middle" fill="#ffffff"
+        font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="19" letter-spacing="1">NVR</text>
+</svg>
