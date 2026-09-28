@@ -10,8 +10,15 @@
   <!-- LOGIN -->
   <div id="login-screen" class="login-body">
     <form id="login" class="card login-card" autocomplete="on">
-      <h1>Dahua Camera Viewer</h1>
+      <h1 id="login-title">Dahua Camera Viewer</h1>
       <p class="sub">Connect directly to your NVR / DVR / camera</p>
+      <div id="saved" class="hidden">
+        <ul id="saved-list" class="saved-list"></ul>
+        <h2 id="form-title" class="form-title">Add or edit an NVR</h2>
+      </div>
+      <label>Name <span class="muted">(optional)</span>
+        <input name="name" placeholder="e.g. Building A" autocomplete="off" />
+      </label>
       <label>IP address
         <input name="ip" placeholder="192.168.1.108" required />
       </label>
@@ -33,11 +40,13 @@
   <!-- APP -->
   <div id="app-screen" class="hidden">
     <header class="topbar">
-      <div class="brand"><strong>Cameras</strong><span id="device" class="muted"></span></div>
+      <div class="brand"><select id="dev-switch" class="dev-switch" title="Switch NVR"></select><span id="device" class="muted"></span></div>
       <div class="spacer"></div>
       <div class="seg" role="tablist">
         <button class="seg-btn active" data-view="live" role="tab">Live</button>
         <button class="seg-btn" data-view="recordings" role="tab">Recordings</button>
+        <button class="seg-btn" data-view="events" role="tab">Events</button>
+        <button class="seg-btn" data-view="admin" role="tab">Admin</button>
       </div>
       <button id="logout" class="ghost">Sign out</button>
     </header>
@@ -84,6 +93,32 @@
         <span id="rec-status" class="muted"></span>
       </div>
       <ul id="rec-list" class="rec-list"></ul>
+    </main>
+
+    <main id="view-events" class="view hidden">
+      <div class="toolbar">
+        <label class="inline">Camera <select id="ev-camera"></select></label>
+        <label class="inline">Date <input id="ev-date" type="date" /></label>
+        <button id="ev-search">Search</button>
+        <span id="ev-status" class="muted"></span>
+      </div>
+      <div id="ev-strips" class="ev-strips"></div>
+      <ul id="ev-list" class="rec-list"></ul>
+    </main>
+
+    <main id="view-admin" class="view hidden">
+      <nav id="admin-nav" class="subnav">
+        <button data-sec="overview" class="active">Security</button>
+        <button data-sec="users">Users</button>
+        <button data-sec="log">Log</button>
+        <button data-sec="streams">Streams</button>
+        <button data-sec="clock">Clock</button>
+      </nav>
+      <section id="adm-overview" class="adm-sec"></section>
+      <section id="adm-users" class="adm-sec hidden"></section>
+      <section id="adm-log" class="adm-sec hidden"></section>
+      <section id="adm-streams" class="adm-sec hidden"></section>
+      <section id="adm-clock" class="adm-sec hidden"></section>
     </main>
   </div>
 
