@@ -68,7 +68,9 @@ nvr perms apt5 --channels 5,6             # change which cameras a user sees
 
 New accounts go in the built-in **`user` group** and get only `Monitor_NN`
 (live) and optionally `Replay_NN` (playback) for the chosen channels — no
-settings, no PTZ, no user management, no delete/backup.
+settings, no PTZ, no user management, no delete/backup. (Some firmware
+force-adds the group's defaults — e.g. `AuthManuCtr`, manual record/alarm
+control, on NVR4108 fw 3.215 — which can't be removed per user.)
 
 ### Log
 
