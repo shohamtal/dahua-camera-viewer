@@ -1,19 +1,51 @@
 import * as dahua from './lib/dahua.js';
 import { playRecording } from './lib/h264play.js';
+import { initAdmin, showAdmin } from './admin-ui.js';
 
-// ---- persistent creds (extension storage, localStorage fallback) ---------
+// ---- saved NVRs (extension storage, localStorage fallback) ---------------
+// `devices` is a list of {id, name, host, port, user, pass?, device}; `lastId`
+// is the one to reopen. One entry per NVR (host:port); the password is kept
+// only when "Remember" is ticked, and dropped on sign out.
 const hasChromeStore = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
-const store = {
-  get: () => hasChromeStore
-    ? new Promise((r) => chrome.storage.local.get('conn', (d) => r(d.conn || null)))
-    : Promise.resolve(JSON.parse(localStorage.getItem('conn') || 'null')),
-  set: (c) => hasChromeStore
-    ? new Promise((r) => chrome.storage.local.set({ conn: c }, r))
-    : Promise.resolve(localStorage.setItem('conn', JSON.stringify(c))),
-  clear: () => hasChromeStore
-    ? new Promise((r) => chrome.storage.local.remove('conn', r))
-    : Promise.resolve(localStorage.removeItem('conn')),
+const kv = {
+  get: (k) => hasChromeStore
+    ? new Promise((r) => chrome.storage.local.get(k, (d) => r(d[k] ?? null)))
+    : Promise.resolve(JSON.parse(localStorage.getItem(k) || 'null')),
+  set: (k, v) => hasChromeStore
+    ? new Promise((r) => chrome.storage.local.set({ [k]: v }, r))
+    : Promise.resolve(localStorage.setItem(k, JSON.stringify(v))),
+  remove: (k) => hasChromeStore
+    ? new Promise((r) => chrome.storage.local.remove(k, r))
+    : Promise.resolve(localStorage.removeItem(k)),
 };
+const devId = (c) => `${c.host}:${c.port || 80}`;
+const devName = (d) => d.name || d.device?.type || d.host;
+const forgetPassword = ({ pass, ...rest }) => rest;
+
+async function loadDevices() {
+  let list = await kv.get('devices');
+  if (!list) { // migrate the single saved login from older versions
+    const old = await kv.get('conn');
+    list = old?.host ? [{ ...old, id: devId(old), name: '' }] : [];
+    await kv.set('devices', list);
+    if (list.length) await kv.set('lastId', list[0].id);
+    await kv.remove('conn');
+  }
+  return list;
+}
+async function saveDevice(d) {
+  const list = await loadDevices();
+  const i = list.findIndex((x) => x.id === d.id);
+  if (i === -1) list.push(d); else list[i] = d;
+  await kv.set('devices', list);
+  await kv.set('lastId', d.id);
+}
+async function removeDevice(id) {
+  const list = (await loadDevices()).filter((x) => x.id !== id);
+  await kv.set('devices', list);
+  if ((await kv.get('lastId')) === id) await kv.remove('lastId');
+  return list;
+}
 
 // ---- host permission (requested per-device at runtime, not broad at install) --
 const hasPerms = typeof chrome !== 'undefined' && chrome.permissions;
@@ -23,6 +55,9 @@ const hasHostPermission = (host) => hasPerms
   : Promise.resolve(true);
 const requestHostPermission = (host) => hasPerms
   ? new Promise((r) => chrome.permissions.request({ origins: hostOrigins(host) }, r))
+  : Promise.resolve(true);
+const removeHostPermission = (host) => hasPerms
+  ? new Promise((r) => chrome.permissions.remove({ origins: hostOrigins(host) }, r))
   : Promise.resolve(true);
 
 let conn = null;
@@ -36,56 +71,114 @@ function el(tag, props = {}, ...kids) {
 }
 const $ = (id) => document.getElementById(id);
 
-// ---- login ---------------------------------------------------------------
+// ---- login + saved NVR list ---------------------------------------------
 const loginForm = $('login');
-loginForm.addEventListener('submit', async (e) => {
+
+function fillForm(d = {}) {
+  loginForm.name.value = d.name || '';
+  loginForm.ip.value = d.host || '';
+  loginForm.port.value = d.port || 80;
+  loginForm.user.value = d.user || '';
+  loginForm.pass.value = d.pass || '';
+  (d.host ? (d.pass ? $('submit') : loginForm.pass) : loginForm.name).focus();
+}
+
+function renderSaved(list) {
+  const box = $('saved');
+  box.classList.toggle('hidden', !list.length);
+  $('login-title').textContent = list.length ? 'Your NVRs' : 'Dahua Camera Viewer';
+  $('form-title').classList.toggle('hidden', !list.length);
+  $('saved-list').replaceChildren(...list.map((d) => {
+    const remove = el('button', { className: 'ghost', textContent: '✕', title: 'Forget this NVR' });
+    remove.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Forget "${devName(d)}" and its saved login?`)) return;
+      const rest = await removeDevice(d.id);
+      // Drop the host grant too, unless another saved NVR shares the address.
+      if (!rest.some((x) => x.host === d.host)) await removeHostPermission(d.host);
+      renderSaved(rest);
+    });
+    const edit = el('button', { className: 'ghost', textContent: 'Edit', title: 'Edit name / login' });
+    edit.addEventListener('click', (e) => { e.stopPropagation(); fillForm(d); });
+    const item = el('li', { className: 'saved-item', title: d.pass ? 'Connect' : 'Enter the password to connect' },
+      el('div', { className: 'saved-main' },
+        el('strong', { textContent: devName(d) }),
+        el('span', { className: 'muted', textContent: `${d.host}${+d.port !== 80 ? ':' + d.port : ''} · ${d.user}${d.pass ? '' : ' · no saved password'}` })),
+      edit, remove);
+    // Connecting straight from the click keeps the user gesture for the permission prompt.
+    item.addEventListener('click', () => (d.pass ? connectTo(d, true) : fillForm(d)));
+    return item;
+  }));
+}
+
+loginForm.addEventListener('submit', (e) => {
   e.preventDefault();
+  const f = Object.fromEntries(new FormData(loginForm).entries());
+  const host = f.ip.trim(), port = parseInt(f.port, 10) || 80;
+  connectTo({ id: devId({ host, port }), name: f.name.trim(), host, port, user: f.user, pass: f.pass }, !!f.remember);
+});
+
+async function connectTo(candidate, remember) {
   const msg = $('login-msg'); msg.textContent = ''; msg.className = 'msg';
   const btn = $('submit'); btn.disabled = true; btn.textContent = 'Connecting…';
-  const f = Object.fromEntries(new FormData(loginForm).entries());
-  const candidate = { host: f.ip.trim(), port: parseInt(f.port, 10) || 80, user: f.user, pass: f.pass };
   try {
-    // Ask for access to just this device's host (this click is the user gesture).
+    // Ask for access to just this device's host (the click is the user gesture).
     if (!(await requestHostPermission(candidate.host))) throw new Error('access to this device was not granted');
     const device = await dahua.deviceInfo(candidate);
     if (!device.type && !device.serial) throw new Error('no response from device');
-    candidate.device = device;
-    conn = candidate;
-    if (f.remember) await store.set(candidate); else await store.clear();
+    const c = { ...candidate, device };
+    await saveDevice(remember ? c : forgetPassword(c));
+    conn = c;
     await enterApp();
   } catch (err) {
-    msg.textContent = 'Could not connect: ' + err.message;
+    msg.textContent = `Could not connect to ${devName(candidate)}: ${err.message}`;
     msg.classList.add('error');
     btn.disabled = false; btn.textContent = 'Connect';
   }
-});
+}
 
 // ---- app shell -----------------------------------------------------------
 async function enterApp() {
   $('login-screen').classList.add('hidden');
   $('app-screen').classList.remove('hidden');
   const d = conn.device || {};
-  $('device').textContent = [d.type, d.serial && 'SN ' + d.serial, conn.host].filter(Boolean).join('  ·  ');
+  $('device').textContent = [d.type, d.serial && 'SN ' + d.serial, conn.host + (+conn.port !== 80 ? ':' + conn.port : '')].filter(Boolean).join('  ·  ');
+  const devices = await loadDevices();
+  $('dev-switch').replaceChildren(
+    ...devices.map((x) => el('option', { value: x.id, textContent: devName(x), selected: x.id === conn.id })),
+    el('option', { value: '__add', textContent: '+ Add NVR…' }));
   cameras = await dahua.listChannels(conn);
   const sel = $('rec-camera');
   sel.replaceChildren(...cameras.map((c) => el('option', { value: c.channel, textContent: `${c.name} (ch ${c.channel})` })));
-  $('rec-date').value = new Date().toISOString().slice(0, 10);
+  $('rec-date').value = $('ev-date').value = localDate(new Date());
+  $('ev-camera').replaceChildren(el('option', { value: 'all', textContent: 'All cameras' }),
+    ...cameras.map((c) => el('option', { value: c.channel, textContent: `${c.name} (ch ${c.channel})` })));
+  initAdmin(conn, cameras);
   startLive();
 }
 
 $('logout').addEventListener('click', async () => {
   stopLive();
-  await store.clear();
+  await saveDevice(forgetPassword(conn));
+  location.reload();
+});
+
+// Switching reloads the page: every view, stream and admin section starts
+// clean against the other NVR (auto-reconnect picks it up via lastId).
+$('dev-switch').addEventListener('change', async (e) => {
+  stopLive();
+  if (e.target.value === '__add') location.hash = 'add';
+  else await kv.set('lastId', e.target.value);
   location.reload();
 });
 
 document.querySelectorAll('.seg-btn').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('.seg-btn').forEach((x) => x.classList.remove('active'));
   b.classList.add('active');
-  const live = b.dataset.view === 'live';
-  $('view-live').classList.toggle('hidden', !live);
-  $('view-recordings').classList.toggle('hidden', live);
-  if (live) startLive(); else stopLive();
+  const view = b.dataset.view;
+  for (const v of ['live', 'recordings', 'events', 'admin']) $(`view-${v}`).classList.toggle('hidden', v !== view);
+  if (view === 'live') startLive(); else stopLive();
+  if (view === 'admin') showAdmin();
 }));
 
 // ---- live grid: snapshot thumbnails, stream on demand --------------------
@@ -275,7 +368,7 @@ async function searchRecordings() {
       const item = el('li', { className: 'rec-item' },
         el('div', { className: 'rec-main' },
           el('span', { className: 'rec-time', textContent: `${timeOnly(rec.startTime)} → ${timeOnly(rec.endTime)}` }),
-          el('span', { className: 'muted', textContent: `${fmtDur(rec.durationSec)} · ${fmtSize(rec.length)}${rec.type ? ' · ' + rec.type : ''}` })),
+          el('span', { className: 'muted', textContent: `${fmtDur(rec.durationSec)} · ${fmtSize(rec.length)}${rec.type ? ' · ' + rec.type : ''}${dahua.isMotion(rec) ? ' · motion' : ''}` })),
         el('div', { className: 'rec-actions' }, prog, playBtn, dlBtn));
       playBtn.addEventListener('click', () => openPlayback(rec, channel));
       dlBtn.addEventListener('click', () => downloadClip(rec, channel, dlBtn, prog));
@@ -284,6 +377,76 @@ async function searchRecordings() {
   } catch (e) {
     status.textContent = 'Error: ' + e.message;
   }
+}
+
+// ---- motion events -------------------------------------------------------
+// Motion-flagged recordings for a day: a 24h strip per camera plus a newest-first
+// list. Clicking an event (strip mark or list row) opens it in the player.
+let evToken = 0;
+const localDate = (d) => `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+const secOfDay = (s) => { const m = (s || '').match(/ (\d+):(\d+):(\d+)/); return m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : 0; };
+
+$('ev-search').addEventListener('click', searchEvents);
+
+async function searchEvents() {
+  const token = ++evToken;
+  const pick = $('ev-camera').value, date = $('ev-date').value;
+  const status = $('ev-status');
+  if (!date) { status.textContent = 'Pick a date'; return; }
+  const cams = pick === 'all' ? cameras : cameras.filter((c) => c.channel === +pick);
+  const [y, m, d] = date.split('-').map(Number);
+  const start = new Date(y, m - 1, d, 0, 0, 0), end = new Date(y, m - 1, d, 23, 59, 59);
+  const found = [], failed = [];
+  $('ev-strips').replaceChildren(); $('ev-list').replaceChildren();
+  // One camera at a time: each search holds a media-finder object on the NVR.
+  for (const cam of cams) {
+    status.textContent = `Searching ${cam.name}…`;
+    try {
+      const events = await dahua.findMotion(conn, cam.channel, start, end);
+      if (token !== evToken) return;
+      found.push({ cam, events });
+      renderEvents(found);
+    } catch (e) {
+      if (token !== evToken) return;
+      failed.push(`${cam.name} (${e.message})`);
+    }
+  }
+  const total = found.reduce((n, f) => n + f.events.length, 0);
+  status.textContent = (total ? `${total} motion event(s)` : 'No motion events found') + (failed.length ? ` · failed: ${failed.join(', ')}` : '');
+}
+
+function renderEvents(found) {
+  const strips = found.map(({ cam, events }) => {
+    const bar = el('div', { className: 'ev-bar' });
+    for (const ev of events) {
+      const s = secOfDay(ev.startTime);
+      const e = ev.endTime.slice(0, 10) === ev.startTime.slice(0, 10) ? secOfDay(ev.endTime) : 86400;
+      bar.append(el('button', {
+        className: 'ev-mark', title: `${timeOnly(ev.startTime)} → ${timeOnly(ev.endTime)} · ${fmtDur(ev.durationSec)}`,
+        style: `left:${s / 864}%;width:${Math.max(e - s, 0) / 864}%`,
+        onclick: () => openPlayback(ev, cam.channel),
+      }));
+    }
+    return el('div', { className: `ev-row${events.length ? '' : ' empty'}` },
+      el('div', { className: 'ev-name' }, cam.name, el('span', { className: 'muted', textContent: ` ${events.length}` })), bar);
+  });
+  $('ev-strips').replaceChildren(
+    el('div', { className: 'ev-row ev-hours' }, el('div'), el('div', { className: 'ev-bar' },
+      ...[0, 3, 6, 9, 12, 15, 18, 21].map((h) => el('span', { style: `left:${h / 24 * 100}%`, textContent: `${two(h)}:00` })))),
+    ...strips);
+
+  const all = found.flatMap(({ cam, events }) => events.map((ev) => ({ cam, ev })))
+    .sort((a, b) => b.ev.startTime.localeCompare(a.ev.startTime));
+  $('ev-list').replaceChildren(...all.map(({ cam, ev }) => {
+    const prog = el('span', { className: 'dl-progress' });
+    const dlBtn = el('button', { textContent: 'Download' });
+    dlBtn.addEventListener('click', (e) => { e.stopPropagation(); downloadClip(ev, cam.channel, dlBtn, prog); });
+    return el('li', { className: 'rec-item ev-item', onclick: () => openPlayback(ev, cam.channel) },
+      el('div', { className: 'rec-main' },
+        el('span', { className: 'rec-time', textContent: `${timeOnly(ev.startTime)} → ${timeOnly(ev.endTime)}` }),
+        el('span', { className: 'muted', textContent: `${cam.name} · ${fmtDur(ev.durationSec)}${ev.length ? ' · ' + fmtSize(ev.length) : ''}` })),
+      el('div', { className: 'rec-actions' }, prog, el('button', { textContent: 'Play' }), dlBtn));
+  }));
 }
 
 async function downloadClip(rec, channel, btn, prog) {
@@ -323,14 +486,32 @@ async function downloadClip(rec, channel, btn, prog) {
 const pct = (done, total) => total ? Math.min(100, Math.round(done / total * 100)) + '%' : (done / 1e6).toFixed(0) + 'MB';
 
 // ---- boot ----------------------------------------------------------------
+const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what)), ms))]);
+
 (async function init() {
-  const saved = await store.get();
-  // Auto-connect only if we already hold permission for this host (can't prompt
-  // without a user gesture at boot — the user re-grants by clicking Connect).
-  if (saved && saved.host && await hasHostPermission(saved.host)) {
-    try { saved.device = await dahua.deviceInfo(saved); conn = saved; await enterApp(); return; }
-    catch { /* fall through to login */ }
+  const devices = await loadDevices();
+  const lastId = await kv.get('lastId');
+  const last = devices.find((d) => d.id === lastId);
+  const adding = location.hash === '#add';
+  if (adding) history.replaceState(null, '', location.pathname);
+  renderSaved(devices);
+  if (adding || !last) return fillForm();
+  // Prefill the last NVR, so a failed auto-connect is one click away.
+  fillForm(last);
+  if (!last.pass) return; // signed out: keep the NVR + user, not the password
+  const msg = $('login-msg'), btn = $('submit');
+  // Can't prompt for permission without a user gesture — Connect re-grants it.
+  if (!(await hasHostPermission(last.host))) { msg.textContent = `Click Connect to allow access to ${last.host} again.`; return; }
+  msg.textContent = `Reconnecting to ${devName(last)}…`; btn.disabled = true; btn.textContent = 'Reconnecting…';
+  try {
+    const device = await withTimeout(dahua.deviceInfo(last), 10000, 'the device did not answer');
+    if (!device.type && !device.serial) throw new Error('no response from device');
+    conn = { ...last, device };
+    await saveDevice(conn); // refresh the stored model/serial
+    await enterApp();
+  } catch (e) {
+    msg.textContent = `Couldn't reconnect to ${devName(last)} automatically: ${e.message}. Check it's reachable, then click Connect.`;
+    msg.classList.add('error');
+    btn.disabled = false; btn.textContent = 'Connect';
   }
-  // Prefill IP if we had one.
-  if (saved && saved.host) loginForm.ip.value = saved.host;
 })();

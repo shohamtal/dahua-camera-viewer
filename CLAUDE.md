@@ -19,11 +19,13 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 |---|---|
 | `manifest.json` | MV3 manifest. Host access is **`optional_host_permissions`** (`http/https://*/*`) — requested at runtime for only the host the user connects to (see `app.js` `requestHostPermission`), so there's no broad install-time grant. Only static permission is `storage`. |
 | `background.js` | Service worker. Sole job: open `app.html` in a tab when the toolbar icon is clicked. |
-| `app.html` | Login screen + app shell (Live/Recordings tabs, fullscreen modal, playback modal). |
-| `app.js` | All UI logic: login, live grid (thumbnails + on-demand streaming), fullscreen, recordings search, playback controls/timeline. |
+| `app.html` | Login screen + app shell (Live/Recordings/Events/Admin tabs, fullscreen modal, playback modal). |
+| `app.js` | All UI logic: login, live grid (thumbnails + on-demand streaming), fullscreen, recordings search, motion events (per-camera 24h strip + list), playback controls/timeline, login/auto-reconnect, saved NVR list + top-bar switcher. |
+| `admin-ui.js` | Admin tab (Security, Users, Log, Streams, Clock sub-sections) over `lib/admin.js`. Sections load on first open and re-read the device after each change. |
 | `style.css` | Dark/light theme, grid, modals, playback controls. |
 | `lib/md5.js` | Pure-JS MD5 (Web Crypto has no MD5; Digest auth needs it). |
-| `lib/dahua.js` | **Isomorphic** Dahua client (browser + Node): digest fetch, device info, channels, snapshot, MJPEG stream, find recordings, download clip. |
+| `lib/dahua.js` | **Isomorphic** Dahua client (browser + Node): digest fetch, device info, channels, snapshot, MJPEG stream, find recordings / motion events, download clip. |
+| `lib/admin.js` | **Isomorphic** NVR admin calls shared by the Admin tab and Node: users, log, exposure/firmware checks, sub-stream config, clock. Read-only test: `test/admin-read.mjs`. |
 | `lib/h264play.js` | Recording player: streams a bounded `.dav`, demuxes DHAV → H.264, decodes via WebCodecs to a canvas. |
 | `scripts/nvr.mjs` | Node CLI for NVR admin (users, passwords, log, UPnP/P2P exposure) via `userManager.cgi` / `log.cgi` / `configManager.cgi`. Manual: `docs/NVR-CLI.md`. Output contains secrets — never commit it. |
 | `test/node-smoke.mjs` | Runs the shared client against a real device from Node (no CORS in Node) to prove the digest/MJPEG/find/download logic. |
@@ -43,6 +45,11 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   parallel requests fail. Load thumbnails **sequentially** with a small gap.
 - **`mediaFileFind.cgi`**: the `condition.Channel` is **0-based** even though the
   UI/channels are 1-based. Off-by-one here = "no recordings".
+- **Motion events** come from the recording index, not a separate event log:
+  `findFile` with `condition.Flags[0]=Event&condition.Events[0]=VideoMotion`. If the
+  firmware rejects/ignores that, `findMotion` filters the full listing by each file's
+  `Flags`/`Events`. Back-to-back files (gap ≤ 5 s) are merged into one event. Only
+  recordings the NVR flagged for motion show up (motion recording must be enabled).
 - **Recording download**: use `loadfile.cgi?action=startLoad&...` — it streams a
   bounded byte window reliably. `RPC_Loadfile` / `RPC2` stalls. ffmpeg `-f dhav`
   reads `.dav` from a *file* but not from a pipe (DHII framing) — irrelevant here
@@ -57,6 +64,14 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 - **Seek** in recordings is implemented by **re-requesting** the `.dav` stream from
   a new start time (`startLoad` from `startTime + offset`), then restarting the
   decoder — there's no random access inside the container.
+
+## Multiple NVRs
+
+`chrome.storage.local` holds `devices` (one entry per `host:port`: name, user,
+optional password, last device info) and `lastId`. The old single `conn` key is
+migrated on first load. Switching NVRs sets `lastId` and **reloads the page**, so
+every view, stream and admin section starts clean — `conn` is a single global.
+Forgetting an NVR also drops its host permission.
 
 ## Conventions
 
