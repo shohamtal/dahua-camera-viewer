@@ -108,6 +108,13 @@ A VPN/Tailscale avoids all of this — the NVR stays completely private.
 
 More detail for contributors is in [CLAUDE.md](CLAUDE.md).
 
+## NVR admin CLI
+
+`scripts/nvr.mjs` is a small terminal tool (same client, Node 18+) to manage the
+NVR itself: create limited per-person accounts instead of sharing the admin
+password, reset passwords, read the device log, and check for internet exposure
+or unknown admin accounts. See [docs/NVR-CLI.md](docs/NVR-CLI.md).
+
 ## Compatibility
 
 Built and tested against a **DHI-NVR4108-8P-4KS2**. Should work with most Dahua and

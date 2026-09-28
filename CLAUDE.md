@@ -25,6 +25,7 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 | `lib/md5.js` | Pure-JS MD5 (Web Crypto has no MD5; Digest auth needs it). |
 | `lib/dahua.js` | **Isomorphic** Dahua client (browser + Node): digest fetch, device info, channels, snapshot, MJPEG stream, find recordings, download clip. |
 | `lib/h264play.js` | Recording player: streams a bounded `.dav`, demuxes DHAV → H.264, decodes via WebCodecs to a canvas. |
+| `scripts/nvr.mjs` | Node CLI for NVR admin (users, passwords, log, UPnP/P2P exposure) via `userManager.cgi` / `log.cgi` / `configManager.cgi`. Manual: `docs/NVR-CLI.md`. Output contains secrets — never commit it. |
 | `test/node-smoke.mjs` | Runs the shared client against a real device from Node (no CORS in Node) to prove the digest/MJPEG/find/download logic. |
 | `icons/` | Extension icons (SVG source + rasterized 16/32/48/128). Regenerate with `rsvg-convert -w N -h N icon.svg -o icon-N.png`. |
 
