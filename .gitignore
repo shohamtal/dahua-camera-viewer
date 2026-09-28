@@ -3,3 +3,7 @@ node_modules/
 *.log
 dist/
 store/screenshots/
+
+# NVR CLI output — contains passwords / device data
+*-accounts.csv
+*log-backup*.txt
