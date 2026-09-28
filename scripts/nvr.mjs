@@ -64,6 +64,10 @@ const conn = { host, port: +port, user: NVR_USER, pass: NVR_PASS };
 async function cgi(uri) {
   const res = await dahua.digestFetch(conn, uri);
   const body = await res.text();
+  if (res.status === 401) {
+    throw new Error(`login rejected for "${NVR_USER}" — check NVR_PASS (still the placeholder?). ` +
+      'Careful: repeated wrong passwords lock the account for a while.');
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status} on ${uri.replace(/(Password|pwd\w*)=[^&]*/gi, '$1=***')}: ${body.trim()}`);
   return body;
 }
