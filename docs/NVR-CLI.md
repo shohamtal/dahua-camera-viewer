@@ -90,6 +90,10 @@ nvr log --last 2000 | grep -v <your-pc-ip>   # hide your own sessions
 - **`passwd` for another user** deletes and recreates the account with the same
   group/permissions/memo — the CGI API can't set another user's password without
   knowing the old one. For your own account it uses `modifyPassword`.
+- **The built-in `admin` password can't be changed over CGI** on NVR4108 fw 3.215
+  (`modifyPassword` → 400, `modifyUser` → "OK" but ignored). Change it in the web
+  UI: Setup → System → Account → admin → Modify. Keep a second full-admin
+  account (created with all of admin's permissions) as a fallback.
 - **`deluser`** refuses to delete reserved accounts (`admin`) or the account the
   CLI is logged in with.
 - **The log is a ring buffer** (≈1024 entries on NVR4108-class devices). Every
