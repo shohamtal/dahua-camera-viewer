@@ -279,9 +279,13 @@ const commands = {
     const get = async (n) => parseTable(await cgi(`/cgi-bin/configManager.cgi?action=getConfig&name=${n}`)).table?.[n];
     const [upnp, p2p, dvrip, web] = await Promise.all(['UPnP', 'T2UServer', 'DVRIP', 'Web'].map((n) => get(n).catch(() => null)));
     console.log(`Web port: ${web?.Port}   TCP (37777-style) port: ${dvrip?.TCPPort}   HTTPS/SSL: ${dvrip?.SSLPort}`);
-    console.log(`UPnP: ${upnp?.Enable === 'true' ? 'ENABLED' : 'disabled'}`);
+    const upnpOn = upnp?.Enable === 'true';
+    console.log(`UPnP: ${upnpOn ? 'ENABLED' : 'disabled'}`);
     for (const m of (upnp?.MapTable || []).filter(Boolean)) {
-      if (m.Enable === 'true') console.log(`  !! router forwards internet ${m.Protocol} ${m.OuterPort} -> ${m.InnerPort} (${m.ServiceName})`);
+      if (m.Enable !== 'true') continue;
+      console.log(upnpOn
+        ? `  !! router forwards internet ${m.Protocol} ${m.OuterPort} -> ${m.InnerPort} (${m.ServiceName})`
+        : `  (inactive map ${m.Protocol} ${m.OuterPort}; check the router no longer forwards it)`);
     }
     const p = (Array.isArray(p2p) ? p2p : [p2p]).filter(Boolean);
     console.log(`P2P cloud: ${p.some((x) => x.Enable === 'true') ? `ENABLED (${p[0]?.RegisterServer || p[0]?.Address})` : 'disabled'}`);
