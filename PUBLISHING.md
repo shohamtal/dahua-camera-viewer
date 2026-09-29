@@ -15,7 +15,7 @@ git, or the store folder. A helper script is included:
 # → dist/dahua-camera-viewer-<version>.zip
 ```
 
-It zips: `manifest.json`, `app.html`, `app.js`, `style.css`, `background.js`,
+It zips: `manifest.json`, `app.html`, `app.js`, `admin-ui.js`, `style.css`, `background.js`,
 `lib/`, and `icons/`.
 
 ## 2. Register as a Chrome Web Store developer (once)
@@ -37,15 +37,20 @@ handles credentials. Easiest options:
 
 ## 4. Prepare screenshots (1280×800)
 
-The store needs at least one screenshot at **1280×800** (or 640×400). The originals
-in `docs/screenshots/` aren't that exact size, so pad/resize them:
+The store needs at least one screenshot at **1280×800** (or 640×400), at most 5.
+This fits the five listing shots from `docs/screenshots/` to that size, numbered
+in upload order:
 
 ```bash
 ./scripts/make-store-screenshots.sh
-# → store/screenshots/*.png  (1280×800, white-padded)
+# → store/screenshots/1-live-grid.png … 5-admin-users.png  (1280×800)
 ```
 
-Then upload 1–5 of them.
+Then upload all five, in order.
+
+> The screenshots come from a simulated NVR (made-up images, names, serial and
+> IPs). **Never** use screenshots of a real system: camera frames, camera names,
+> serial numbers, IPs, usernames and log entries all identify the building.
 
 ## 5. Create the item and upload
 
