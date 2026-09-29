@@ -30,6 +30,12 @@ FEATURES
 • Recordings with a real timeline: play in the browser, scrub, and skip forward/
   back — only the part you watch is streamed, so no giant downloads just to find a
   moment. You can also download the raw clip.
+• Motion events: every motion alert of the day on a 24-hour strip per camera —
+  click one to jump straight into that recording.
+• Admin tools for your own NVR: security check (outdated firmware, UPnP port
+  forwards, P2P, who's logged in), limited per-person accounts, device log,
+  stream and clock settings.
+• Several NVRs (e.g. one per building): save them all and switch from the top bar.
 • Works with any device that supports the standard Dahua HTTP-CGI API.
 • Dark / light theme.
 • 100% local: your credentials and video never leave your computer and your device.
@@ -47,15 +53,17 @@ home (recommended) or port forwarding — see the project page for a security gu
 Not affiliated with or endorsed by Dahua. Open source (MIT).
 
 ## Single purpose (dashboard field)
-View live video and recordings from a user-owned Dahua-compatible camera/NVR/DVR by
-connecting to it directly over the local network.
+View and manage a user-owned Dahua-compatible camera/NVR/DVR (live video,
+recordings, motion events, and the device's own accounts/settings) by connecting
+to it directly over the local network.
 
 ## Permission justifications (dashboard fields)
 
 storage:
-Used to optionally remember the user's device connection details (IP, port,
-username, password) locally on their own computer so they don't re-enter them each
-time. Nothing is transmitted off-device.
+Used to remember the user's saved devices (name, IP, port, username, and — only if
+they tick "Remember" — the password) locally on their own computer so they can
+reconnect and switch between devices without re-entering them. Nothing is
+transmitted off-device.
 
 host permissions (optional_host_permissions http/https ://*/*):
 Cameras/NVRs can be at any IP address on the user's network (or a remote address the
