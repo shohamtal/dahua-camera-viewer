@@ -1,21 +1,27 @@
 # Privacy Policy — Dahua Camera Viewer
 
-_Last updated: 2026-09-10_
+_Last updated: 2026-09-29_
 
 Dahua Camera Viewer is a Chrome extension that connects **directly** from your
 browser to a camera / NVR / DVR device that **you** own and configure.
 
 ## What data the extension handles
 
-- **Connection details you enter** — device IP address, HTTP port, username, and
-  password.
+- **Connection details you enter** — for each device you save: an optional name,
+  IP address, HTTP port, username, and password; plus the model and serial number
+  the device reports.
 - **Video and recording data** returned by your device.
 
 ## Where that data goes
 
 - Your connection details are stored **locally**, using Chrome's `storage.local`
-  API, inside your own Chrome profile on your own computer. This is only done if you
-  leave "Remember on this computer" checked.
+  API, inside your own Chrome profile on your own computer, so the extension can
+  list your devices and reconnect. The **password** is stored only if you leave
+  "Remember on this computer" checked; signing out removes it. Removing a device
+  (✕ on the login screen) deletes all of its details and the extension's access to
+  its address.
+- Passwords the extension generates for new NVR accounts are shown once and never
+  stored.
 - Those details are used **solely** to authenticate to the device IP address you
   entered.
 - Video, snapshots, and recordings are streamed **directly** from your device to
@@ -30,8 +36,8 @@ browser to a camera / NVR / DVR device that **you** own and configure.
 
 ## Permissions and why they're needed
 
-- **`storage`** — to optionally remember your device connection details on your
-  computer.
+- **`storage`** — to remember your saved devices (and, optionally, their
+  passwords) on your computer.
 - **Host access (optional, per-device)** — a camera can live at any IP address on
   your network (or a remote address you set up), which isn't known ahead of time.
   Host access is declared as an **optional** permission and is **requested at

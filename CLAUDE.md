@@ -22,13 +22,14 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 | `app.html` | Login screen + app shell (Live/Recordings/Events/Admin tabs, fullscreen modal, playback modal). |
 | `app.js` | All UI logic: login, live grid (thumbnails + on-demand streaming), fullscreen, recordings search, motion events (per-camera 24h strip + list), playback controls/timeline, login/auto-reconnect, saved NVR list + top-bar switcher. |
 | `admin-ui.js` | Admin tab (Security, Users, Log, Streams, Clock sub-sections) over `lib/admin.js`. Sections load on first open and re-read the device after each change. |
-| `style.css` | Dark/light theme, grid, modals, playback controls. |
+| `style.css` | Dark/light theme, grid, modals, playback controls, event strips, admin tables/forms. |
 | `lib/md5.js` | Pure-JS MD5 (Web Crypto has no MD5; Digest auth needs it). |
 | `lib/dahua.js` | **Isomorphic** Dahua client (browser + Node): digest fetch, device info, channels, snapshot, MJPEG stream, find recordings / motion events, download clip. |
 | `lib/admin.js` | **Isomorphic** NVR admin calls shared by the Admin tab and Node: users, log, exposure/firmware checks, sub-stream config, clock. Read-only test: `test/admin-read.mjs`. |
 | `lib/h264play.js` | Recording player: streams a bounded `.dav`, demuxes DHAV → H.264, decodes via WebCodecs to a canvas. |
 | `scripts/nvr.mjs` | Node CLI for NVR admin (users, passwords, log, UPnP/P2P exposure) via `userManager.cgi` / `log.cgi` / `configManager.cgi`. Manual: `docs/NVR-CLI.md`. Output contains secrets — never commit it. |
-| `test/node-smoke.mjs` | Runs the shared client against a real device from Node (no CORS in Node) to prove the digest/MJPEG/find/download logic. |
+| `test/node-smoke.mjs` | Runs the shared client against a real device from Node (no CORS in Node) to prove the digest/MJPEG/find/motion/download logic. |
+| `test/admin-read.mjs` | Read-only check of `lib/admin.js` against a real device (`NVR_HOST`/`NVR_USER`/`NVR_PASS` env). Makes no changes. |
 | `icons/` | Extension icons (SVG source + rasterized 16/32/48/128). Regenerate with `rsvg-convert -w N -h N icon.svg -o icon-N.png`. |
 
 ## Key technical facts (learned the hard way)
@@ -65,6 +66,29 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   a new start time (`startLoad` from `startTime + offset`), then restarting the
   decoder — there's no random access inside the container.
 
+## NVR admin (Admin tab + CLI)
+
+- **Changing another user's password** isn't possible over CGI without their old
+  password, so `admin-ui.js` (and the CLI) **delete and recreate** the account with
+  the same group/authorities/memo. If the recreate fails the account is gone — the
+  UI says so.
+- **The built-in `admin` password can't be changed over CGI** on NVR4108 fw 3.215
+  (`modifyPassword` → 400, `modifyUser` → "OK" but ignored). The UI points to the
+  NVR's web UI instead of offering it.
+- **Permissions** are `Monitor_NN` (live) / `Replay_NN` (playback), 2-digit
+  1-based channels. When editing a user's cameras, keep their other authorities —
+  `modifyUser` replaces the whole list. Some firmware force-adds group defaults
+  (e.g. `AuthManuCtr`).
+- **Writes answer `OK`**; anything else is an error (`admin-ui.js` `ok()`).
+  P2P is `T2UServer[0].Enable`, UPnP is `UPnP.Enable`, sub-stream keys are
+  `Encode[ch-1].ExtraFormat[0].Video.*` (`subStreamKey`).
+- **The log is a ring buffer** (~1024 entries) and every session adds a
+  login/logout, so reading it pushes history out. Detail values can contain bare
+  LFs — `parseLines` treats non-`key=` lines as continuations.
+- **Device data is untrusted.** Rogue accounts on a hacked NVR have attacker-chosen
+  names and memos: render device strings with `textContent` / `el()`, never
+  `innerHTML`.
+
 ## Multiple NVRs
 
 `chrome.storage.local` holds `devices` (one entry per `host:port`: name, user,
@@ -75,12 +99,16 @@ Forgetting an NVR also drops its host permission.
 
 ## Conventions
 
-- Keep `lib/dahua.js` isomorphic (must run under Node for the smoke test) — use only
-  `fetch`/`AbortController`/`TextDecoder`, no DOM.
+- Keep `lib/dahua.js` and `lib/admin.js` isomorphic (must run under Node for the
+  tests and the CLI) — use only `fetch`/`AbortController`/`TextDecoder`/
+  `crypto.getRandomValues`, no DOM. UI code goes in `app.js` / `admin-ui.js`.
 - No secrets in the repo. The login is generic; never hardcode an IP/serial/password.
   The only example IP is a generic `192.168.1.108`.
 - Test after changes to the client with:
-  `node test/node-smoke.mjs <ip> <user> <pass>` (needs a reachable device).
+  `node test/node-smoke.mjs <ip> <user> <pass>` and
+  `NVR_HOST=<ip> NVR_PASS=… node test/admin-read.mjs` (need a reachable device).
+- Anything in the Admin tab that writes to the NVR must `confirm()` first when it
+  is destructive (delete, password reset, turning P2P off / UPnP on).
 - Icons: edit `icons/icon.svg`, then re-rasterize the four PNGs.
 
 ## Things intentionally NOT done
@@ -88,3 +116,5 @@ Forgetting an NVR also drops its host permission.
 - No cloud/P2P built in (browsers can't speak Dahua P2P — see README remote-access).
 - No transcoding server. Everything is native browser decode.
 - No audio (recordings are decoded video-only).
+- No combined multi-NVR view: one NVR is connected at a time (switching reloads).
+- No thumbnails for motion events (the NVR has no cheap "snapshot at time T").
