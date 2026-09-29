@@ -48,4 +48,6 @@ if (recs.length) {
   dc.abort();
   console.log(`  download stream OK: pulled ${(dl / 1e6).toFixed(2)}MB (HTTP ${res.status})`);
 }
+const motion = await dahua.findMotion(conn, 1, start, end);
+console.log(`motion events ch1 today: ${motion.length}`, motion.slice(-2).map((m) => `${m.startTime} → ${m.endTime} (${m.files} file(s))`));
 console.log('\nALL CHECKS PASSED');

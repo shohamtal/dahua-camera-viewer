@@ -28,16 +28,47 @@ auth** from JavaScript.
     download to see 10 seconds. (H.264 is demuxed from Dahua's `.dav`/DHAV
     container and decoded with the browser's built-in **WebCodecs**.)
   - **Download** the raw `.dav` clip (opens in VLC or Dahua Smart Player).
+  - Clips the NVR recorded because of motion are labelled **motion**.
+- **Motion events** — pick a date (one camera or all of them) and see every motion
+  alert as marks on a 24-hour strip per camera, plus a newest-first list. Click a
+  mark or a row to play that moment; back-to-back clips are merged into one event.
+  (Uses the NVR's own motion-flagged recordings, so motion recording must be on.)
+- **Admin** — manage the NVR itself from the browser:
+  - **Security** — firmware age (flags builds vulnerable to the actively exploited
+    CVE-2021-33044/33045 login bypass), UPnP port forwards and P2P cloud with
+    on/off buttons, who's logged in right now and from where.
+  - **Users** — give each person their own limited account (chosen cameras, live
+    and optionally playback), change which cameras a user sees, new random
+    passwords, delete accounts. Unknown admin-group accounts are highlighted.
+  - **Log** — the device log by date range, filtered to outside IPs or account
+    changes, with CSV export.
+  - **Streams** — per-camera sub-stream codec / FPS / bitrate (what live view uses).
+  - **Clock** — NVR vs. computer time, one-click sync, NTP settings.
+- **Several NVRs** — save one per building. The login screen lists them for
+  one-click connect, and the top-bar dropdown switches between them.
 - **Generic login** — IP, port, username, password. Nothing is hardcoded; it works
-  with any Dahua-compatible device. Credentials are optionally remembered in your
-  browser profile.
+  with any Dahua-compatible device. It reconnects to the last NVR on open;
+  passwords are remembered only if you tick "Remember", and **Sign out** forgets
+  just that NVR's password.
 - **Dark / light** theme follows your OS.
 
 <p align="center">
-  <img src="docs/screenshots/login.png" alt="Login" width="320">
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/recordings.png" alt="Recordings with timeline" width="460">
+  <img src="docs/screenshots/events.png" alt="Motion events per camera" width="400">
+  &nbsp;
+  <img src="docs/screenshots/recordings.png" alt="Recordings" width="400">
 </p>
+<p align="center">
+  <img src="docs/screenshots/admin-security.png" alt="Admin: security check" width="400">
+  &nbsp;
+  <img src="docs/screenshots/admin-users.png" alt="Admin: per-person accounts" width="400">
+</p>
+<p align="center">
+  <img src="docs/screenshots/admin-log.png" alt="Admin: device log" width="400">
+  &nbsp;
+  <img src="docs/screenshots/login.png" alt="Saved NVRs" width="220">
+</p>
+
+<sub>Screenshots use a simulated NVR: made-up camera images, names, serial and addresses.</sub>
 
 ## Install
 
@@ -56,7 +87,14 @@ auth** from JavaScript.
 1. Open the viewer (toolbar icon).
 2. Enter your device's **IP address**, **HTTP port** (usually `80`), **username**
    and **password** — the same credentials you use in the Dahua mobile app.
-3. Connect. You'll see the live grid; switch to **Recordings** for playback.
+3. Connect. You'll see the live grid; switch to **Recordings** for playback,
+   **Events** for motion alerts, or **Admin** to manage the NVR.
+4. Another building? Top-bar dropdown → **+ Add NVR…**, and give it a name.
+
+> **Admin changes are real.** Security, Log and the Users list only read, but
+> Delete, New password, the UPnP/P2P buttons and Streams/Clock saves change the
+> NVR immediately. Most need an admin-group login. The built-in `admin` password
+> can't be changed over this API on some firmware — use the NVR's web UI for that.
 
 That's it. By default everything happens on your **local network** — the extension
 talks to `http://<device-ip>` directly.
@@ -90,9 +128,12 @@ A VPN/Tailscale avoids all of this — the NVR stays completely private.
 
 ## Security & privacy
 
-- Your credentials are stored **only** in `chrome.storage.local`, in your own
-  Chrome profile on your own machine. They are never sent anywhere except to the
-  device IP you enter. See [PRIVACY.md](PRIVACY.md).
+- Saved NVRs (name, address, username, and the password if you chose "Remember")
+  are stored **only** in `chrome.storage.local`, in your own Chrome profile on
+  your own machine. They are never sent anywhere except to that NVR. Forgetting
+  an NVR also removes the extension's access to its address. See [PRIVACY.md](PRIVACY.md).
+- New passwords created in the Admin tab are shown once and never stored. Treat
+  the log CSV like the log itself: it contains IPs and usernames.
 - Authentication uses HTTP **Digest** (password is hashed, never sent in the clear).
   Over plain `http://` on your LAN the *video* is unencrypted, which is fine on a
   trusted home network — use HTTPS or a VPN for anything crossing the internet.
@@ -110,8 +151,9 @@ More detail for contributors is in [CLAUDE.md](CLAUDE.md).
 
 ## NVR admin CLI
 
-`scripts/nvr.mjs` is a small terminal tool (same client, Node 18+) to manage the
-NVR itself: create limited per-person accounts instead of sharing the admin
+The Admin tab covers the everyday tasks in the browser. `scripts/nvr.mjs` is the
+terminal version (same client, Node 18+), handy for scripting and bulk work such as
+`bulkadd apt 1 26`. It manages the NVR itself: create limited per-person accounts instead of sharing the admin
 password, reset passwords, read the device log, and check for internet exposure
 or unknown admin accounts. See [docs/NVR-CLI.md](docs/NVR-CLI.md).
 
