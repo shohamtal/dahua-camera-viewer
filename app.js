@@ -1,6 +1,7 @@
 import * as dahua from './lib/dahua.js';
 import { playRecording } from './lib/h264play.js';
 import { initAdmin, showAdmin } from './admin-ui.js';
+import { isAdminAccount } from './lib/admin.js';
 
 // ---- saved NVRs (extension storage, localStorage fallback) ---------------
 // `devices` is a list of {id, name, host, port, user, pass?, device}; `lastId`
@@ -147,13 +148,17 @@ async function enterApp() {
   $('dev-switch').replaceChildren(
     ...devices.map((x) => el('option', { value: x.id, textContent: devName(x), selected: x.id === conn.id })),
     el('option', { value: '__add', textContent: '+ Add NVR…' }));
-  cameras = await dahua.listChannels(conn);
+  // The Admin tab is only for admin-group accounts. The NVR refuses changes from
+  // limited accounts anyway, but they'd see errors and a falsely clean Security page.
+  let isAdmin;
+  [cameras, isAdmin] = await Promise.all([dahua.listChannels(conn), isAdminAccount(conn).catch(() => false)]);
+  document.querySelector('.seg-btn[data-view=admin]').classList.toggle('hidden', !isAdmin);
   const sel = $('rec-camera');
   sel.replaceChildren(...cameras.map((c) => el('option', { value: c.channel, textContent: `${c.name} (ch ${c.channel})` })));
   $('rec-date').value = $('ev-date').value = localDate(new Date());
   $('ev-camera').replaceChildren(el('option', { value: 'all', textContent: 'All cameras' }),
     ...cameras.map((c) => el('option', { value: c.channel, textContent: `${c.name} (ch ${c.channel})` })));
-  initAdmin(conn, cameras);
+  if (isAdmin) initAdmin(conn, cameras);
   startLive();
 }
 
