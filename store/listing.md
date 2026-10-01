@@ -16,41 +16,30 @@ English
 
 ## Detailed description
 
-View your Dahua NVR, DVR, or IP cameras straight from Chrome — no NPAPI/ActiveX
-plugin and no server required.
+<!-- One line per paragraph: the store keeps line breaks as typed. -->
+
+View your Dahua NVR, DVR, or IP cameras straight from Chrome — no NPAPI/ActiveX plugin and no server required.
 
 Project's repository: https://github.com/shohamtal/dahua-camera-viewer
 
-Dahua's built-in web interface still relies on the old "webplugin" that modern
-browsers removed years ago, so live video no longer works there. This extension
-talks to your device directly using its standard HTTP API, so everything runs in
-your browser on your own network.
+Dahua's built-in web interface still relies on the old "webplugin" that modern browsers removed years ago, so live video no longer works there. This extension talks to your device directly using its standard HTTP API, so everything runs in your browser on your own network.
 
 FEATURES
-• Live grid of all channels as snapshot thumbnails — click a camera to start its
-  live stream, or open it fullscreen. Nothing streams until you ask.
-• Recordings with a real timeline: play in the browser, scrub, and skip forward/
-  back — only the part you watch is streamed, so no giant downloads just to find a
-  moment. You can also download the raw clip.
-• Motion events: every motion alert of the day on a 24-hour strip per camera —
-  click one to jump straight into that recording.
-• Admin tools for your own NVR: security check (outdated firmware, UPnP port
-  forwards, P2P, who's logged in), limited per-person accounts, device log,
-  stream and clock settings.
+• Live grid of all channels as snapshot thumbnails — click a camera to start its live stream, or open it fullscreen. Nothing streams until you ask.
+• Recordings with a real timeline: play in the browser, scrub, and skip forward/back — only the part you watch is streamed, so no giant downloads just to find a moment. You can also download the raw clip.
+• Motion events: every motion alert of the day on a 24-hour strip per camera — click one to jump straight into that recording.
+• Admin tools for your own NVR: security check (outdated firmware, UPnP port forwards, P2P, who's logged in), limited per-person accounts, device log, stream and clock settings.
 • Several NVRs (e.g. one per building): save them all and switch from the top bar.
 • Works with any device that supports the standard Dahua HTTP-CGI API.
 • Dark / light theme.
-• 100% local: your credentials and video never leave your computer and your device.
-  No accounts, no cloud, no tracking, no ads.
+• 100% local: your credentials and video never leave your computer and your device. No accounts, no cloud, no tracking, no ads.
 
 HOW TO USE
 1. Click the toolbar icon to open the viewer.
-2. Enter your device's IP address, port, username, and password (the same ones you
-   use in the Dahua app).
+2. Enter your device's IP address, port, username, and password (the same ones you use in the Dahua app).
 3. Connect.
 
-Works on your home network out of the box. For remote viewing, use a VPN into your
-home (recommended) or port forwarding — see the project page for a security guide.
+Works on your home network out of the box. For remote viewing, use a VPN into your home (recommended) or port forwarding — see the project page for a security guide.
 
 Not affiliated with or endorsed by Dahua. Open source (MIT).
 
