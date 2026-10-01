@@ -85,6 +85,10 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 - **The log is a ring buffer** (~1024 entries) and every session adds a
   login/logout, so reading it pushes history out. Detail values can contain bare
   LFs — `parseLines` treats non-`key=` lines as continuations.
+- **The Admin tab is shown only to admin-group accounts** (`isAdminAccount`: own
+  `getUserInfo` group, else whether `getUserInfoAll` is allowed). The NVR enforces
+  permissions itself; hiding the tab avoids error pages and a falsely clean
+  Security check (unreadable config reads as "UPnP/P2P off").
 - **Device data is untrusted.** Rogue accounts on a hacked NVR have attacker-chosen
   names and memos: render device strings with `textContent` / `el()`, never
   `innerHTML`.
