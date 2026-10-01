@@ -19,6 +19,8 @@ English
 View your Dahua NVR, DVR, or IP cameras straight from Chrome — no NPAPI/ActiveX
 plugin and no server required.
 
+Project's repository: https://github.com/shohamtal/dahua-camera-viewer
+
 Dahua's built-in web interface still relies on the old "webplugin" that modern
 browsers removed years ago, so live video no longer works there. This extension
 talks to your device directly using its standard HTTP API, so everything runs in
