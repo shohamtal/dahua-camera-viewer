@@ -164,7 +164,9 @@ async function enterApp() {
   $('ev-camera').replaceChildren(el('option', { value: 'all', textContent: 'All cameras' }),
     ...cameras.map((c) => el('option', { value: c.channel, textContent: `${c.name} (ch ${c.channel})` })));
   if (isAdmin) initAdmin(conn, cameras);
-  startLive();
+  // A tab may have been clicked while cameras were loading: open whichever is active now.
+  const active = document.querySelector('.seg-btn.active:not(.hidden)')?.dataset.view || 'live';
+  showView(active);
 }
 
 $('logout').addEventListener('click', async () => {

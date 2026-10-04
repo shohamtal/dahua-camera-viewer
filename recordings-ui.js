@@ -5,6 +5,7 @@
 import * as dahua from './lib/dahua.js';
 import { playRecording } from './lib/h264play.js';
 import { exportMp4, MAX_EXPORT_MS } from './lib/mp4.js';
+import { getTime } from './lib/admin.js';
 
 let conn = null;
 let cameras = [];
@@ -57,11 +58,34 @@ export function initRecordings(c, cams, opts = {}) {
   wireExport();
   wireTimeline();
   document.addEventListener('keydown', onKey);
+  if (!$('view-recordings').classList.contains('hidden')) checkClock();
 }
 
 /** Recordings tab became visible. */
 export function showRecordings() {
   if (S.channel == null && S.pendingSeek == null && cameras.length) selectCamera(cameras[0].channel);
+  checkClock();
+}
+
+/**
+ * Recordings are stamped with the NVR's clock. If it's off (e.g. daylight saving
+ * not applied), say so — otherwise "today" and the times on the timeline look wrong.
+ */
+let clockChecked = false;
+async function checkClock() {
+  if (clockChecked || !conn) return; // !conn: tab opened before the connection finished
+  clockChecked = true;
+  let nvr;
+  try { nvr = toMs(await getTime(conn)); } catch { return; }
+  if (nvr == null) return;
+  const drift = nvr - Date.now(), min = Math.round(Math.abs(drift) / 60e3);
+  if (min < 3) return;
+  const amount = min >= 55 && min <= 65 ? '1 hour' : min >= 60 ? `${Math.round(min / 6) / 10} hours` : `${min} minutes`;
+  const admin = !document.querySelector('.seg-btn[data-view=admin]')?.classList.contains('hidden');
+  $('rec-clock-warn').textContent = `⚠ The NVR's clock is ${amount} ${drift < 0 ? 'behind' : 'ahead of'} this computer, so recordings are stamped ${drift < 0 ? 'early' : 'late'}` +
+    (min >= 55 && min <= 65 ? ' (usually daylight saving time not set on the NVR)' : '') + '. ' +
+    (admin ? 'Fix it in Admin → Clock.' : 'Ask the NVR admin to fix its clock.');
+  $('rec-clock-warn').classList.remove('hidden');
 }
 
 /** Leaving the tab: stop streaming. */
