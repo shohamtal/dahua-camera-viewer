@@ -19,16 +19,18 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 |---|---|
 | `manifest.json` | MV3 manifest. Host access is **`optional_host_permissions`** (`http/https://*/*`) — requested at runtime for only the host the user connects to (see `app.js` `requestHostPermission`), so there's no broad install-time grant. Only static permission is `storage`. |
 | `background.js` | Service worker. Sole job: open `app.html` in a tab when the toolbar icon is clicked. |
-| `app.html` | Login screen + app shell (Live/Recordings/Events/Admin tabs, fullscreen modal, playback modal). |
-| `app.js` | All UI logic: login, live grid (thumbnails + on-demand streaming), fullscreen, recordings search, motion events (per-camera 24h strip + list), playback controls/timeline, login/auto-reconnect, saved NVR list + top-bar switcher. |
+| `app.html` | Login screen + app shell (Live/Recordings/Events/Admin tabs, fullscreen modal, Recordings player + timeline). |
+| `app.js` | App shell: login/auto-reconnect, saved NVR list + top-bar switcher, tab switching (`showView`), live grid (thumbnails + on-demand streaming), fullscreen, Events tab (per-camera 24h strip + list → opens the moment on the Recordings timeline). |
+| `recordings-ui.js` | Recordings tab: calendar that marks days with video, one 24h timeline per day (recorded spans, motion marks, zoom 24h/1h/10m, click/drag to play), 1×–16× speed, next/previous motion, file list + downloads. |
 | `admin-ui.js` | Admin tab (Security, Users, Log, Streams, Clock sub-sections) over `lib/admin.js`. Sections load on first open and re-read the device after each change. |
 | `style.css` | Dark/light theme, grid, modals, playback controls, event strips, admin tables/forms. |
 | `lib/md5.js` | Pure-JS MD5 (Web Crypto has no MD5; Digest auth needs it). |
 | `lib/dahua.js` | **Isomorphic** Dahua client (browser + Node): digest fetch, device info, channels, snapshot, MJPEG stream, find recordings / motion events, download clip. |
 | `lib/admin.js` | **Isomorphic** NVR admin calls shared by the Admin tab and Node: users, log, exposure/firmware checks, sub-stream config, clock. Read-only test: `test/admin-read.mjs`. |
-| `lib/h264play.js` | Recording player: streams a bounded `.dav`, demuxes DHAV → H.264, decodes via WebCodecs to a canvas. |
+| `lib/h264play.js` | Recording player: streams a bounded `.dav`, demuxes DHAV → H.264, decodes via WebCodecs to a canvas. Variable speed (key frames only from 8×), main/sub stream, reports the recording's wall-clock time from DHAV headers. |
 | `scripts/nvr.mjs` | Node CLI for NVR admin (users, passwords, log, UPnP/P2P exposure) via `userManager.cgi` / `log.cgi` / `configManager.cgi`. Manual: `docs/NVR-CLI.md`. Output contains secrets — never commit it. |
 | `test/node-smoke.mjs` | Runs the shared client against a real device from Node (no CORS in Node) to prove the digest/MJPEG/find/motion/download logic. |
+| `test/playback-probe.mjs` | Read-only check of playback assumptions on a real NVR: DHAV timestamps vs requested time, whether the sub stream is stored, real streaming speed, what a no-video time returns. |
 | `test/admin-read.mjs` | Read-only check of `lib/admin.js` against a real device (`NVR_HOST`/`NVR_USER`/`NVR_PASS` env). Makes no changes. |
 | `icons/` | Extension icons (SVG source + rasterized 16/32/48/128). Regenerate with `rsvg-convert -w N -h N icon.svg -o icon-N.png`. |
 
@@ -63,8 +65,21 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   only from the first key frame. Feeding raw Annex-B with a bare codec string gives
   "Decoding error".
 - **Seek** in recordings is implemented by **re-requesting** the `.dav` stream from
-  a new start time (`startLoad` from `startTime + offset`), then restarting the
-  decoder — there's no random access inside the container.
+  a new start time, then restarting the decoder — there's no random access inside
+  the container. `startLoad` is **time-based**, not file-based, so the timeline
+  plays from any moment; the player streams to the end of the contiguous recorded
+  span and the UI continues at the next span when it ends (`onEnded`).
+- **DHAV header**: `+4` frame type (`0xFD` I, `0xFC` P), `+16` packed local
+  date-time (sec 6 bits, min 6, hour 5, day 5, month 4, year−2000 6 — as in
+  ffmpeg's dhav demuxer), `+20` u16 millisecond counter. The player paces by the
+  ms counter and reports the date-time, so the playhead is right across gaps.
+- **Fast playback** decodes every frame up to 4×, key frames only from 8×, and
+  switches to the **sub stream** (`subtype=1`) from 4×. Not every NVR stores the
+  sub stream: zero frames back → fall back to the main stream (`sdBroken`).
+- **Days with video**: no dedicated API — one `findFile` over the last 35 days
+  (paged by 100), bucketed by day. A time inside a gap is snapped to the next
+  recorded span before requesting (unverified what an NVR streams for a gap —
+  check with `test/playback-probe.mjs`).
 
 ## NVR admin (Admin tab + CLI)
 
@@ -110,7 +125,8 @@ Forgetting an NVR also drops its host permission.
   The only example IP is a generic `192.168.1.108`.
 - Test after changes to the client with:
   `node test/node-smoke.mjs <ip> <user> <pass>` and
-  `NVR_HOST=<ip> NVR_PASS=… node test/admin-read.mjs` (need a reachable device).
+  `NVR_HOST=<ip> NVR_PASS=… node test/admin-read.mjs` and
+  `NVR_HOST=<ip> NVR_PASS=… node test/playback-probe.mjs` (need a reachable device).
 - Anything in the Admin tab that writes to the NVR must `confirm()` first when it
   is destructive (delete, password reset, turning P2P off / UPnP on).
 - Icons: edit `icons/icon.svg`, then re-rasterize the four PNGs.
@@ -121,4 +137,7 @@ Forgetting an NVR also drops its host permission.
 - No transcoding server. Everything is native browser decode.
 - No audio (recordings are decoded video-only).
 - No combined multi-NVR view: one NVR is connected at a time (switching reloads).
-- No thumbnails for motion events (the NVR has no cheap "snapshot at time T").
+- No thumbnails for motion events / timeline yet (each would be one short `startLoad`
+  + key-frame decode — planned once the timeline is proven on real NVRs).
+- No client-side motion analysis of recordings: it would mean downloading the whole
+  day's video. Use the NVR's own motion marks instead.
