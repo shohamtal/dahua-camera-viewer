@@ -175,6 +175,11 @@ Dahua-OEM devices that expose the standard HTTP-CGI API (most do). Live view is
 limited to whatever the substream provides (typically D1); recordings play at full
 resolution.
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). After a feature update the extension opens a short
+"What's new" page once (it's bundled — nothing is fetched).
+
 ## License
 
 [MIT](LICENSE) — do whatever you like. Not affiliated with or endorsed by Dahua.

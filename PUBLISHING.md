@@ -15,7 +15,7 @@ git, or the store folder. A helper script is included:
 # → dist/dahua-camera-viewer-<version>.zip
 ```
 
-It zips: `manifest.json`, `app.html`, `app.js`, `admin-ui.js`, `recordings-ui.js`, `feedback.js`, `style.css`, `background.js`,
+It zips: `manifest.json`, `app.html`, `app.html`, `whats-new.html`, `app.js`, `admin-ui.js`, `recordings-ui.js`, `feedback.js`, `style.css`, `background.js`,
 `lib/`, and `icons/`.
 
 ## 2. Register as a Chrome Web Store developer (once)

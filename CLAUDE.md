@@ -18,7 +18,8 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 | File | Role |
 |---|---|
 | `manifest.json` | MV3 manifest. Host access is **`optional_host_permissions`** (`http/https://*/*`) — requested at runtime for only the host the user connects to (see `app.js` `requestHostPermission`), so there's no broad install-time grant. Only static permission is `storage`. |
-| `background.js` | Service worker. Sole job: open `app.html` in a tab when the toolbar icon is clicked. |
+| `background.js` | Service worker: opens `app.html` on toolbar click and on first install; after a **feature** update (x.y bump, not patch) opens `whats-new.html` once. |
+| `whats-new.html` | Static "What's new" page (no scripts — MV3 pages forbid inline JS). Update it with every feature release, together with `CHANGELOG.md`. |
 | `app.html` | Login screen + app shell (Live/Recordings/Events/Admin tabs, fullscreen modal, Recordings player + timeline). |
 | `app.js` | App shell: login/auto-reconnect, saved NVR list + top-bar switcher, tab switching (`showView`), live grid (thumbnails + on-demand streaming), fullscreen, Events tab (per-camera 24h strip + list → opens the moment on the Recordings timeline). |
 | `recordings-ui.js` | Recordings tab: calendar that marks days with video, one 24h timeline per day (recorded spans, motion marks, zoom 24h/1h/10m, click/drag to play), speed 1×–8×/Max, next/previous motion, MP4 export panel (≤ 20 min), file list + .dav downloads. |
@@ -172,6 +173,11 @@ Forgetting an NVR also drops its host permission.
 - Anything in the Admin tab that writes to the NVR must `confirm()` first when it
   is destructive (delete, password reset, turning P2P off / UPnP on).
 - Icons: edit `icons/icon.svg`, then re-rasterize the four PNGs.
+- Releasing: bump `version` in `manifest.json`, add a `CHANGELOG.md` entry, update
+  `whats-new.html` for feature releases, `./scripts/package.sh` (it lists files by
+  name — add new top-level files there), tag `vX.Y.Z` + GitHub release, then upload
+  the zip to the existing Web Store item. The store's name/summary come from
+  `manifest.json` `name`/`description` (≤ 75 / ≤ 132 chars).
 
 ## Things intentionally NOT done
 
