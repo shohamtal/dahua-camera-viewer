@@ -1,3 +1,5 @@
+// First: starts capturing errors before anything else runs.
+import { initFeedback, setFeedbackContext, noteSuccessfulUse } from './feedback.js';
 import * as dahua from './lib/dahua.js';
 import { initAdmin, showAdmin } from './admin-ui.js';
 import { initRecordings, showRecordings, hideRecordings, goToRecording, downloadClip } from './recordings-ui.js';
@@ -132,6 +134,7 @@ async function connectTo(candidate, remember) {
     conn = c;
     await enterApp();
   } catch (err) {
+    console.warn('connect failed:', err.message);
     msg.textContent = `Could not connect to ${devName(candidate)}: ${err.message}`;
     msg.classList.add('error');
     btn.disabled = false; btn.textContent = 'Connect';
@@ -145,6 +148,7 @@ async function enterApp() {
   const d = conn.device || {};
   $('device').textContent = [d.type, d.serial && 'SN ' + d.serial, conn.host + (+conn.port !== 80 ? ':' + conn.port : '')].filter(Boolean).join('  ·  ');
   const devices = await loadDevices();
+  setFeedbackContext({ conn, devices });
   $('dev-switch').replaceChildren(
     ...devices.map((x) => el('option', { value: x.id, textContent: devName(x), selected: x.id === conn.id })),
     el('option', { value: '__add', textContent: '+ Add NVR…' }));
@@ -155,6 +159,8 @@ async function enterApp() {
   document.querySelector('.seg-btn[data-view=admin]').classList.toggle('hidden', !isAdmin);
   $('ev-date').value = localDate(new Date());
   initRecordings(conn, cameras, { showView });
+  setFeedbackContext({ cameras });
+  noteSuccessfulUse();
   $('ev-camera').replaceChildren(el('option', { value: 'all', textContent: 'All cameras' }),
     ...cameras.map((c) => el('option', { value: c.channel, textContent: `${c.name} (ch ${c.channel})` })));
   if (isAdmin) initAdmin(conn, cameras);
@@ -378,8 +384,11 @@ function renderEvents(found) {
 // ---- boot ----------------------------------------------------------------
 const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what)), ms))]);
 
+initFeedback();
+
 (async function init() {
   const devices = await loadDevices();
+  setFeedbackContext({ devices });
   const lastId = await kv.get('lastId');
   const last = devices.find((d) => d.id === lastId);
   const adding = location.hash === '#add';
@@ -400,6 +409,7 @@ const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => se
     await saveDevice(conn); // refresh the stored model/serial
     await enterApp();
   } catch (e) {
+    console.warn('auto-reconnect failed:', e.message);
     msg.textContent = `Couldn't reconnect to ${devName(last)} automatically: ${e.message}. Check it's reachable, then click Connect.`;
     msg.classList.add('error');
     btn.disabled = false; btn.textContent = 'Connect';

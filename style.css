@@ -238,3 +238,16 @@ label.check input { width: auto; margin: 0; }
 .export .msg { margin: 0; min-height: 0; }
 #pb-export.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .tl-sel { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, #3fb950 30%, transparent); border-left: 2px solid #3fb950; border-right: 2px solid #3fb950; pointer-events: none; }
+
+/* feedback: report dialog + rating request */
+.report { width: min(760px, 96vw); }
+.report-body { padding: 14px; display: grid; gap: 10px; }
+.report-body label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+.report-body textarea { width: 100%; padding: 8px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+#report-text { font-family: ui-monospace, Menlo, monospace; font-size: .75rem; }
+.report-btn { padding: 6px 10px; }
+.login-foot { margin: 14px 0 0; text-align: center; font-size: .8rem; }
+.login-foot a { color: var(--muted); }
+.rate-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 18px; background: color-mix(in srgb, var(--accent) 14%, var(--card)); border-bottom: 1px solid var(--border); font-size: .88rem; }
+.rate-bar span { flex: 1; min-width: 220px; }
+.rate-bar button { padding: 4px 12px; font-size: .82rem; }

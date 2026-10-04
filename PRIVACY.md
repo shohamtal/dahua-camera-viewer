@@ -1,6 +1,6 @@
 # Privacy Policy — Dahua Camera Viewer
 
-_Last updated: 2026-09-29_
+_Last updated: 2026-10-04_
 
 Dahua Camera Viewer is a Chrome extension that connects **directly** from your
 browser to a camera / NVR / DVR device that **you** own and configure.
@@ -27,12 +27,34 @@ browser to a camera / NVR / DVR device that **you** own and configure.
 - Video, snapshots, and recordings are streamed **directly** from your device to
   your browser.
 
+## Problem reports and the error log
+
+- The extension keeps a short **error log** (the last 200 errors) in `storage.local`
+  on your computer, so a problem can be reported after it happens. It is never
+  sent anywhere by itself.
+- **Report a problem** shows you the full report before anything leaves your
+  computer. IP addresses, device addresses, serial numbers, usernames, passwords,
+  device and camera names, MAC and email addresses are replaced with placeholders.
+  The report contains the extension and Chrome version, the NVR model and
+  firmware, what you typed, and the recent log.
+- It is shared **only if you click** "Open a GitHub issue" (which opens GitHub in
+  a new tab, where you can edit it and choose whether to submit it under your own
+  GitHub account) or copy it yourself.
+
+## Rating request
+
+After you have used the extension on a few different days, it may ask once
+whether you'd like to rate it. Only the count of days used is stored (locally),
+to decide when to ask; "Maybe later" and "✕" are remembered the same way.
+
 ## What the extension does NOT do
 
 - It does **not** send your credentials, video, or any other data to the developer,
   to any server, or to any third party.
 - It has **no analytics, no telemetry, no tracking, and no ads.**
 - It makes **no** network requests other than to the device address you provide.
+  (Opening a GitHub issue or the store's review page only happens when you click,
+  in a normal browser tab.)
 
 ## Permissions and why they're needed
 
