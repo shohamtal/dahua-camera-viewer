@@ -115,7 +115,7 @@ async function availableDays(channel) {
 }
 
 async function loadDay(day) {
-  stopPlayer(); setPlaying(false);
+  stopPlayer(); setPlaying(false); clearPicture();
   S.day = day; S.pos = null; S.seg = null;
   const token = ++S.token;
   $('rec-day-label').textContent = new Date(dayStart(day)).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
@@ -255,11 +255,11 @@ function seek(ms, { auto = false } = {}) {
   const subtype = S.speed >= SD_FROM_SPEED && !S.sdBroken ? 1 : 0;
   $('pb-quality').textContent = subtype ? 'SD' : 'HD';
   $('pb-quality').title = subtype ? 'Low-quality stream while playing fast' : 'Full-quality stream';
-  if (!auto) overlay('Loading…');
+  if (!auto) { overlay(''); spinner(true); }
   if (note) status(note);
   const ctl = playRecording(conn, S.channel, fmt(ms), fmt(end), $('rec-canvas'), {
     speed: S.speed, subtype,
-    onStatus: (t) => { if (S.ctl === ctl && !/^No recording data/.test(t)) overlay(t); },
+    onStatus: (t) => { if (S.ctl === ctl && !/^No recording data/.test(t)) overlay(t); }, // '' = first frame drawn
     onTime: (t) => { if (S.ctl === ctl) { S.pos = t; updatePlayhead(); } },
     onEnded: ({ frames }) => {
       if (S.ctl !== ctl) return;
@@ -311,7 +311,11 @@ function onKey(e) {
 }
 
 function status(t) { $('rec-status').textContent = t || ''; }
-function overlay(t) { const o = $('rec-overlay'); o.textContent = t || ''; o.style.display = t ? 'grid' : 'none'; }
+/** Message over the video (dims the last frame); also ends any spinner. */
+function overlay(t) { const o = $('rec-overlay'); o.textContent = t || ''; o.style.display = t ? 'grid' : 'none'; spinner(false); }
+/** Spinner over the last frame while a seek loads — the picture stays put. */
+function spinner(on) { $('rec-spinner').classList.toggle('hidden', !on); }
+function clearPicture() { const c = $('rec-canvas'); c.getContext('2d').clearRect(0, 0, c.width, c.height); }
 
 // ---------- timeline ----------
 
