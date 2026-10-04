@@ -91,7 +91,7 @@ async function selectCamera(channel, preferDay) {
   let days = S.daysByChannel.get(channel);
   if (!days || (preferDay && !days.has(preferDay))) { // cached list may predate that day
     try { days = await availableDays(channel); }
-    catch (e) { if (token === S.token) status('Could not list recordings: ' + e.message); return; }
+    catch (e) { console.warn('list recordings failed:', e.message); if (token === S.token) status('Could not list recordings: ' + e.message); return; }
     S.daysByChannel.set(channel, days);
   }
   if (token !== S.token) return;
@@ -106,8 +106,13 @@ async function selectCamera(channel, preferDay) {
 /** Days (YYYY-MM-DD) with at least one recording, over the last AVAILABILITY_DAYS. */
 async function availableDays(channel) {
   const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (AVAILABILITY_DAYS - 1));
-  const files = await dahua.findRecordings(conn, channel, from, now);
+  // 7-day searches rather than one 35-day one: some firmware refuses long ranges.
+  const files = [];
+  for (let back = 0; back < AVAILABILITY_DAYS; back += 7) {
+    const to = back ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - back + 1, 0, 0, -1) : now;
+    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - Math.min(back + 6, AVAILABILITY_DAYS - 1));
+    files.push(...await dahua.findRecordings(conn, channel, from, to));
+  }
   const days = new Set();
   for (const f of files) {
     const s = toMs(f.startTime), e = toMs(f.endTime) ?? s;
@@ -131,7 +136,7 @@ async function loadDay(day) {
       dahua.findRecordings(conn, S.channel, from, to),
       dahua.findMotion(conn, S.channel, from, to).catch(() => []),
     ]);
-  } catch (e) { if (token === S.token) status('Could not load recordings: ' + e.message); return; }
+  } catch (e) { console.warn('load day failed:', e.message); if (token === S.token) status('Could not load recordings: ' + e.message); return; }
   if (token !== S.token) return;
   S.files = files.sort((a, b) => a.startTime.localeCompare(b.startTime));
   S.spans = files.map((f) => ({ start: Math.max(from.getTime(), toMs(f.startTime)), end: Math.min(to.getTime() + 1000, toMs(f.endTime)) })).filter((x) => x.end > x.start);
@@ -269,7 +274,7 @@ function seek(ms, { auto = false } = {}) {
       // The sub stream isn't stored on every NVR: fall back to the main stream.
       if (subtype === 1 && !frames) { S.sdBroken = true; seek(S.pos, { auto: true }); return; }
       S.emptyRuns = frames ? 0 : S.emptyRuns + 1;
-      if (S.emptyRuns >= 3) { stopPlayer(); setPlaying(false); overlay(`The NVR sent no video around ${hms(ms)}`); return; }
+      if (S.emptyRuns >= 3) { console.warn(`no video from the NVR around ${fmt(ms)}`); stopPlayer(); setPlaying(false); overlay(`The NVR sent no video around ${hms(ms)}`); return; }
       // Stream stopped early inside the file → pick up where it stopped; else the next file.
       const next = frames && S.pos < end - 5000 ? S.pos + 1000 : end;
       if (next < seg.end - 500) { seek(next, { auto: true }); return; }
@@ -527,6 +532,7 @@ async function runExport() {
     msg.textContent = `Saved ${name} — ${mmss(r.seconds * 1000)} of video, ${r.width}×${r.height}` + (r.skippedMs > 2000 ? ` (${mmss(r.skippedMs)} without recording skipped)` : '');
   } catch (e) {
     await sink.abort?.();
+    if (e.name !== 'AbortError') console.warn('export failed:', e.message);
     msg.textContent = e.name === 'AbortError' ? 'Export cancelled' : 'Export failed: ' + e.message;
     msg.classList.add('error');
   } finally {

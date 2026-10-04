@@ -58,6 +58,9 @@ auth** from JavaScript.
   with any Dahua-compatible device. It reconnects to the last NVR on open;
   passwords are remembered only if you tick "Remember", and **Sign out** forgets
   just that NVR's password.
+- **Report a problem** — one click shows a report (errors, versions, NVR model;
+  addresses, serials, usernames and camera names hidden) and opens a pre-filled
+  GitHub issue. Nothing is sent unless you submit it.
 - **Dark / light** theme follows your OS.
 
 <p align="center">

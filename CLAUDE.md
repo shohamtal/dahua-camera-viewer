@@ -22,6 +22,7 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 | `app.html` | Login screen + app shell (Live/Recordings/Events/Admin tabs, fullscreen modal, Recordings player + timeline). |
 | `app.js` | App shell: login/auto-reconnect, saved NVR list + top-bar switcher, tab switching (`showView`), live grid (thumbnails + on-demand streaming), fullscreen, Events tab (per-camera 24h strip + list → opens the moment on the Recordings timeline). |
 | `recordings-ui.js` | Recordings tab: calendar that marks days with video, one 24h timeline per day (recorded spans, motion marks, zoom 24h/1h/10m, click/drag to play), speed 1×–8×/Max, next/previous motion, MP4 export panel (≤ 20 min), file list + .dav downloads. |
+| `feedback.js` | Imported **first** by `app.js`: local error log (last 200, from `window.onerror`, unhandled rejections, `console.error/warn`), "Report a problem" dialog (redacted report → pre-filled GitHub issue or Copy — never sent automatically), and the one-time rating request after 5 days of use. |
 | `admin-ui.js` | Admin tab (Security, Users, Log, Streams, Clock sub-sections) over `lib/admin.js`. Sections load on first open and re-read the device after each change. |
 | `style.css` | Dark/light theme, grid, modals, playback controls, event strips, admin tables/forms. |
 | `lib/md5.js` | Pure-JS MD5 (Web Crypto has no MD5; Digest auth needs it). |
@@ -50,7 +51,9 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 - **Snapshots**: `/cgi-bin/snapshot.cgi?channel=N` is full-res but **rate-limited** —
   parallel requests fail. Load thumbnails **sequentially** with a small gap.
 - **`mediaFileFind.cgi`**: the `condition.Channel` is **0-based** even though the
-  UI/channels are 1-based. Off-by-one here = "no recordings".
+  UI/channels are 1-based. Off-by-one here = "no recordings". `findFile` answers
+  **HTTP 400 when nothing matches** (NVR4108 fw 3.215) — `findRecordings` treats
+  that as an empty list. The calendar searches in 7-day chunks.
 - **Motion events** come from the recording index, not a separate event log:
   `findFile` with `condition.Flags[0]=Event&condition.Events[0]=VideoMotion`. If the
   firmware rejects/ignores that, `findMotion` filters the full listing by each file's
@@ -127,6 +130,20 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 - **Device data is untrusted.** Rogue accounts on a hacked NVR have attacker-chosen
   names and memos: render device strings with `textContent` / `el()`, never
   `innerHTML`.
+
+## Feedback (report a problem, rating)
+
+- **Nothing is sent automatically** — the privacy promise is "talks only to your
+  NVR". Reports are shown to the user and leave only via their click (GitHub issue
+  URL, ~7 KB max, log trimmed to fit) or Copy.
+- `redact()` replaces saved NVRs' passwords/hosts/users/serials/names, camera
+  names, any IPv4, MACs, emails and `user=`/`pwd=` query values. Only free text
+  (description + log) is redacted; the environment lines are fixed fields.
+- To make a failure show up in reports, `console.warn(...)` it — the console is
+  captured. Never log passwords on purpose anyway.
+- Rating request: shown on the 5th distinct day with a successful connection;
+  "Maybe later" asks again 10 days later; "Rate it"/✕ never again. Web Store
+  policy: no incentive, never blocking.
 
 ## Multiple NVRs
 

@@ -34,6 +34,7 @@
       <label class="check"><input type="checkbox" name="remember" checked /> Remember on this computer</label>
       <button type="submit" id="submit">Connect</button>
       <p id="login-msg" class="msg" role="status"></p>
+      <p class="login-foot"><a href="#" data-report>Report a problem</a></p>
     </form>
   </div>
 
@@ -48,8 +49,16 @@
         <button class="seg-btn" data-view="events" role="tab">Events</button>
         <button class="seg-btn" data-view="admin" role="tab">Admin</button>
       </div>
+      <button class="ghost report-btn" data-report title="Report a problem">⚑ Report</button>
       <button id="logout" class="ghost">Sign out</button>
     </header>
+
+    <div id="rate-bar" class="rate-bar hidden" role="status">
+      <span>Enjoying Dahua Camera Viewer? A ★ rating on the Chrome Web Store helps other Dahua owners find it.</span>
+      <button id="rate-yes" class="primary">Rate it</button>
+      <button id="rate-later" class="ghost">Maybe later</button>
+      <button id="rate-never" class="ghost" title="Don't ask again">✕</button>
+    </div>
 
     <main id="view-live" class="view">
       <div id="grid" class="grid"></div>
@@ -159,6 +168,26 @@
       <section id="adm-streams" class="adm-sec hidden"></section>
       <section id="adm-clock" class="adm-sec hidden"></section>
     </main>
+  </div>
+
+  <!-- Report a problem: shown to the user, sent only by their own click -->
+  <div id="report-modal" class="modal hidden">
+    <div class="modal-inner report">
+      <div class="modal-head"><strong>Report a problem</strong><button id="report-close" class="ghost">✕</button></div>
+      <div class="report-body">
+        <label>What happened?
+          <textarea id="report-what" rows="3" placeholder="e.g. Playback stops at 11:00 on the parking camera"></textarea>
+        </label>
+        <label>The report <span class="muted">— addresses, serial numbers, usernames and camera names are replaced</span>
+          <textarea id="report-text" rows="12" readonly spellcheck="false"></textarea>
+        </label>
+        <div class="row">
+          <button id="report-github" class="primary">Open a GitHub issue</button>
+          <button id="report-copy">Copy</button>
+          <span class="muted small">Nothing is sent until you submit it yourself. You can edit the text on GitHub first.</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="app.js"></script>
