@@ -75,7 +75,13 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   ms counter and reports the date-time, so the playhead is right across gaps.
 - **Fast playback** decodes every frame up to 4×, key frames only from 8×, and
   switches to the **sub stream** (`subtype=1`) from 4×. Not every NVR stores the
-  sub stream: zero frames back → fall back to the main stream (`sdBroken`).
+  sub stream (NVR4108 fw 3.215 doesn't): zero frames back → main stream for the rest
+  of the session (`sdBroken`). `startLoad` streams the main stream at only **~9×
+  real time** on that NVR over LAN (~38 Mbit/s), so the top speed is "Max" (the
+  clock is capped by the data) rather than a promised 16×. A time with no video
+  answers **HTTP 400**.
+- Measured on NVR4108 fw 3.215 with `test/playback-probe.mjs`: DHAV timestamps
+  match the requested time exactly; 25 fps, key frame every 2 s.
 - **Days with video**: no dedicated API — one `findFile` over the last 35 days
   (paged by 100), bucketed by day. A time inside a gap is snapped to the next
   recorded span before requesting (unverified what an NVR streams for a gap —
