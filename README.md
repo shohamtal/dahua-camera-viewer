@@ -22,16 +22,20 @@ auth** from JavaScript.
     **⤢** open it fullscreen.
   - Thumbnails show an instant first frame, then upgrade to a sharp full-res
     snapshot in the background.
-- **Recordings** — search by camera + date, then either:
-  - **Play in the browser** with a real timeline: scrub bar, ⏮/⏭ skip ±1 min,
-    play/pause. Only the bytes you actually watch are streamed — no 1.8 GB
-    download to see 10 seconds. (H.264 is demuxed from Dahua's `.dav`/DHAV
-    container and decoded with the browser's built-in **WebCodecs**.)
-  - **Download** the raw `.dav` clip (opens in VLC or Dahua Smart Player).
-  - Clips the NVR recorded because of motion are labelled **motion**.
+- **Recordings** — a calendar that marks the days that actually have video, and one
+  **24-hour timeline** per day: recorded spans and the NVR's motion marks are drawn
+  on it; click or drag anywhere to play from that moment.
+  - Zoom 24h / 1h / 10m, hover to see the time, ◀ Motion ▶ jumps between motion
+    events (Shift+←/→), ±10 s (←/→), space to pause.
+  - **Speed 1×–16×** to skim an hour in minutes (uses the low-quality stream when
+    fast, so the network keeps up).
+  - Only the bytes you watch are streamed — H.264 is demuxed from Dahua's
+    `.dav`/DHAV container and decoded with the browser's built-in **WebCodecs**.
+  - **Download** the raw `.dav` files (open in VLC or Dahua Smart Player).
 - **Motion events** — pick a date (one camera or all of them) and see every motion
   alert as marks on a 24-hour strip per camera, plus a newest-first list. Click a
-  mark or a row to play that moment; back-to-back clips are merged into one event.
+  mark or a row to open that moment on the Recordings timeline; back-to-back clips
+  are merged into one event.
   (Uses the NVR's own motion-flagged recordings, so motion recording must be on.)
 - **Admin** — manage the NVR itself from the browser:
   - **Security** — firmware age (flags builds vulnerable to the actively exploited

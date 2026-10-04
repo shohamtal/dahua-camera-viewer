@@ -66,33 +66,54 @@
       </div>
     </div>
 
-    <!-- Recording playback (WebCodecs) -->
-    <div id="play-modal" class="modal hidden">
-      <div class="modal-inner">
-        <div class="modal-head">
-          <span id="play-title"></span>
-          <button id="play-close" class="ghost">✕</button>
-        </div>
-        <div class="modal-video"><canvas id="play-canvas"></canvas><div id="play-status" class="tile-status">Buffering…</div></div>
-        <div class="play-controls">
-          <button id="pb-back" title="Back 1 min">⏮</button>
-          <button id="pb-toggle" title="Play/Pause">⏸</button>
-          <button id="pb-fwd" title="Forward 1 min">⏭</button>
-          <span id="pb-cur" class="pb-time">00:00:00</span>
-          <input id="pb-seek" class="pb-seek" type="range" min="0" max="100" value="0" step="1" />
-          <span id="pb-dur" class="pb-time">00:00:00</span>
-        </div>
-      </div>
-    </div>
-
     <main id="view-recordings" class="view hidden">
       <div class="toolbar">
         <label class="inline">Camera <select id="rec-camera"></select></label>
-        <label class="inline">Date <input id="rec-date" type="date" /></label>
-        <button id="rec-search">Search</button>
+        <div class="day-pick">
+          <button id="rec-prev-day" class="ghost" title="Previous day with video">‹</button>
+          <div class="cal-wrap">
+            <button id="rec-day-btn" class="day-btn" title="Pick a day — highlighted days have video">📅 <span id="rec-day-label">…</span></button>
+            <div id="rec-cal" class="cal hidden"></div>
+          </div>
+          <button id="rec-next-day" class="ghost" title="Next day with video">›</button>
+        </div>
         <span id="rec-status" class="muted"></span>
       </div>
-      <ul id="rec-list" class="rec-list"></ul>
+
+      <div class="player">
+        <div class="player-video">
+          <canvas id="rec-canvas"></canvas>
+          <div id="rec-overlay" class="tile-status">Pick a day</div>
+          <span id="pb-time" class="player-clock">--:--:--</span>
+        </div>
+        <div class="play-controls">
+          <button id="pb-toggle" title="Play (space)">▶</button>
+          <button id="pb-back" title="Back 10 s (←)">−10s</button>
+          <button id="pb-fwd" title="Forward 10 s (→)">+10s</button>
+          <label class="inline" title="Playback speed">Speed
+            <select id="pb-speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option><option value="16">16×</option></select>
+          </label>
+          <span id="pb-quality" class="badge">HD</span>
+          <span class="spacer"></span>
+          <button id="pb-prev-motion" title="Previous motion (Shift+←)">◀ Motion</button>
+          <button id="pb-next-motion" title="Next motion (Shift+→)">Motion ▶</button>
+        </div>
+        <div class="tl">
+          <div class="tl-top">
+            <div id="tl-zoom" class="tl-zoom">Zoom
+              <button data-zoom="86400" class="active">24h</button><button data-zoom="3600">1h</button><button data-zoom="600">10m</button>
+            </div>
+            <span id="tl-range" class="muted"></span>
+            <span class="tl-legend muted"><i class="lg-seg"></i>recorded <i class="lg-mot"></i>motion</span>
+          </div>
+          <div id="tl-bar" class="tl-bar"></div>
+        </div>
+      </div>
+
+      <details class="rec-files">
+        <summary>Recording files <span id="rec-files-count" class="muted"></span></summary>
+        <ul id="rec-list" class="rec-list"></ul>
+      </details>
     </main>
 
     <main id="view-events" class="view hidden">

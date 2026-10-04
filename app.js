@@ -1,6 +1,6 @@
 import * as dahua from './lib/dahua.js';
-import { playRecording } from './lib/h264play.js';
 import { initAdmin, showAdmin } from './admin-ui.js';
+import { initRecordings, showRecordings, hideRecordings, goToRecording, downloadClip } from './recordings-ui.js';
 import { isAdminAccount } from './lib/admin.js';
 
 // ---- saved NVRs (extension storage, localStorage fallback) ---------------
@@ -153,9 +153,8 @@ async function enterApp() {
   let isAdmin;
   [cameras, isAdmin] = await Promise.all([dahua.listChannels(conn), isAdminAccount(conn).catch(() => false)]);
   document.querySelector('.seg-btn[data-view=admin]').classList.toggle('hidden', !isAdmin);
-  const sel = $('rec-camera');
-  sel.replaceChildren(...cameras.map((c) => el('option', { value: c.channel, textContent: `${c.name} (ch ${c.channel})` })));
-  $('rec-date').value = $('ev-date').value = localDate(new Date());
+  $('ev-date').value = localDate(new Date());
+  initRecordings(conn, cameras, { showView });
   $('ev-camera').replaceChildren(el('option', { value: 'all', textContent: 'All cameras' }),
     ...cameras.map((c) => el('option', { value: c.channel, textContent: `${c.name} (ch ${c.channel})` })));
   if (isAdmin) initAdmin(conn, cameras);
@@ -177,14 +176,14 @@ $('dev-switch').addEventListener('change', async (e) => {
   location.reload();
 });
 
-document.querySelectorAll('.seg-btn').forEach((b) => b.addEventListener('click', () => {
-  document.querySelectorAll('.seg-btn').forEach((x) => x.classList.remove('active'));
-  b.classList.add('active');
-  const view = b.dataset.view;
+function showView(view) {
+  document.querySelectorAll('.seg-btn').forEach((x) => x.classList.toggle('active', x.dataset.view === view));
   for (const v of ['live', 'recordings', 'events', 'admin']) $(`view-${v}`).classList.toggle('hidden', v !== view);
   if (view === 'live') startLive(); else stopLive();
+  if (view === 'recordings') showRecordings(); else hideRecordings();
   if (view === 'admin') showAdmin();
-}));
+}
+document.querySelectorAll('.seg-btn').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
 
 // ---- live grid: snapshot thumbnails, stream on demand --------------------
 // Thumbnails load SEQUENTIALLY (the NVR rate-limits parallel snapshots), then
@@ -300,93 +299,15 @@ $('modal-close').addEventListener('click', closeFullscreen);
 $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeFullscreen(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeFullscreen(); });
 
-// ---- recording playback (WebCodecs) + timeline ---------------------------
-let playCtl = null, pbRec = null, pbChannel = null, pbDur = 0, pbBase = 0, pbPos = 0, pbSeeking = false;
+// ---- formatting helpers --------------------------------------------------
 const two = (n) => String(n).padStart(2, '0');
-function fmtHMS(sec) { sec = Math.max(0, Math.floor(sec)); return `${two(sec / 3600 | 0)}:${two((sec / 60 | 0) % 60)}:${two(sec % 60)}`; }
-function addSeconds(str, sec) {
-  const m = str.match(/(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)/);
-  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6] + sec);
-  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
-}
-function setPos(pos) { pbPos = pos; if (!pbSeeking) { $('pb-seek').value = pos; $('pb-cur').textContent = fmtHMS(pos); } }
-
-function openPlayback(rec, channel) {
-  closePlayback();
-  pbRec = rec; pbChannel = channel; pbDur = rec.durationSec || 0;
-  $('play-title').textContent = `${timeOnly(rec.startTime)} → ${timeOnly(rec.endTime)} · ch ${channel}`;
-  $('pb-seek').max = pbDur; $('pb-seek').value = 0; $('pb-dur').textContent = fmtHMS(pbDur); $('pb-cur').textContent = '00:00:00';
-  $('play-modal').classList.remove('hidden');
-  if (!('VideoDecoder' in window)) { const s = $('play-status'); s.style.display = 'grid'; s.textContent = 'This browser has no WebCodecs support'; return; }
-  startPlaybackAt(0);
-}
-function startPlaybackAt(sec) {
-  sec = Math.max(0, Math.min(pbDur ? pbDur - 1 : sec, sec));
-  if (playCtl) playCtl.stop();
-  pbBase = sec; setPos(sec);
-  $('pb-toggle').textContent = '⏸';
-  const status = $('play-status'); status.style.display = 'grid'; status.textContent = 'Buffering…';
-  playCtl = playRecording(conn, pbChannel, addSeconds(pbRec.startTime, sec), pbRec.endTime, $('play-canvas'), {
-    onStatus: (t) => { if (t) { status.style.display = 'grid'; status.textContent = t; } else status.style.display = 'none'; },
-    onProgress: (p) => setPos(pbBase + p),
-  });
-}
-function closePlayback() {
-  if (playCtl) { playCtl.stop(); playCtl = null; }
-  $('play-modal').classList.add('hidden');
-}
-$('pb-toggle').addEventListener('click', () => {
-  if (!playCtl) return;
-  if (playCtl.paused) { playCtl.resume(); $('pb-toggle').textContent = '⏸'; }
-  else { playCtl.pause(); $('pb-toggle').textContent = '▶'; }
-});
-$('pb-back').addEventListener('click', () => startPlaybackAt(pbPos - 60));
-$('pb-fwd').addEventListener('click', () => startPlaybackAt(pbPos + 60));
-$('pb-seek').addEventListener('input', () => { pbSeeking = true; $('pb-cur').textContent = fmtHMS(+$('pb-seek').value); });
-$('pb-seek').addEventListener('change', () => { const v = +$('pb-seek').value; pbSeeking = false; startPlaybackAt(v); });
-$('play-close').addEventListener('click', closePlayback);
-$('play-modal').addEventListener('click', (e) => { if (e.target.id === 'play-modal') closePlayback(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePlayback(); });
-
-// ---- recordings ----------------------------------------------------------
-const fmtDur = (s) => s ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` : '';
+const fmtDur = (s) => s ? `${Math.floor(s / 60)}m ${two(s % 60)}s` : '';
 const fmtSize = (b) => { if (!b) return ''; const u = ['B', 'KB', 'MB', 'GB']; let i = 0, n = b; while (n >= 1024 && i < 3) { n /= 1024; i++; } return `${n.toFixed(1)} ${u[i]}`; };
 const timeOnly = (s) => (s || '').split(' ')[1] || s;
 
-$('rec-search').addEventListener('click', searchRecordings);
-
-async function searchRecordings() {
-  const channel = parseInt($('rec-camera').value, 10);
-  const date = $('rec-date').value;
-  const status = $('rec-status'); const list = $('rec-list');
-  if (!channel || !date) { status.textContent = 'Pick a camera and date'; return; }
-  status.textContent = 'Searching…'; list.replaceChildren();
-  const [y, m, dd] = date.split('-').map(Number);
-  const start = new Date(y, m - 1, dd, 0, 0, 0), end = new Date(y, m - 1, dd, 23, 59, 59);
-  try {
-    const recs = await dahua.findRecordings(conn, channel, start, end);
-    status.textContent = recs.length ? `${recs.length} clip(s)` : 'No recordings found';
-    for (const rec of recs) {
-      const prog = el('span', { className: 'dl-progress' });
-      const playBtn = el('button', { textContent: 'Play' });
-      const dlBtn = el('button', { textContent: 'Download' });
-      const item = el('li', { className: 'rec-item' },
-        el('div', { className: 'rec-main' },
-          el('span', { className: 'rec-time', textContent: `${timeOnly(rec.startTime)} → ${timeOnly(rec.endTime)}` }),
-          el('span', { className: 'muted', textContent: `${fmtDur(rec.durationSec)} · ${fmtSize(rec.length)}${rec.type ? ' · ' + rec.type : ''}${dahua.isMotion(rec) ? ' · motion' : ''}` })),
-        el('div', { className: 'rec-actions' }, prog, playBtn, dlBtn));
-      playBtn.addEventListener('click', () => openPlayback(rec, channel));
-      dlBtn.addEventListener('click', () => downloadClip(rec, channel, dlBtn, prog));
-      list.append(item);
-    }
-  } catch (e) {
-    status.textContent = 'Error: ' + e.message;
-  }
-}
-
 // ---- motion events -------------------------------------------------------
 // Motion-flagged recordings for a day: a 24h strip per camera plus a newest-first
-// list. Clicking an event (strip mark or list row) opens it in the player.
+// list. Clicking an event (strip mark or list row) opens it on the Recordings timeline.
 let evToken = 0;
 const localDate = (d) => `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
 const secOfDay = (s) => { const m = (s || '').match(/ (\d+):(\d+):(\d+)/); return m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : 0; };
@@ -429,7 +350,7 @@ function renderEvents(found) {
       bar.append(el('button', {
         className: 'ev-mark', title: `${timeOnly(ev.startTime)} → ${timeOnly(ev.endTime)} · ${fmtDur(ev.durationSec)}`,
         style: `left:${s / 864}%;width:${Math.max(e - s, 0) / 864}%`,
-        onclick: () => openPlayback(ev, cam.channel),
+        onclick: () => goToRecording(cam.channel, ev.startTime),
       }));
     }
     return el('div', { className: `ev-row${events.length ? '' : ' empty'}` },
@@ -446,49 +367,13 @@ function renderEvents(found) {
     const prog = el('span', { className: 'dl-progress' });
     const dlBtn = el('button', { textContent: 'Download' });
     dlBtn.addEventListener('click', (e) => { e.stopPropagation(); downloadClip(ev, cam.channel, dlBtn, prog); });
-    return el('li', { className: 'rec-item ev-item', onclick: () => openPlayback(ev, cam.channel) },
+    return el('li', { className: 'rec-item ev-item', onclick: () => goToRecording(cam.channel, ev.startTime) },
       el('div', { className: 'rec-main' },
         el('span', { className: 'rec-time', textContent: `${timeOnly(ev.startTime)} → ${timeOnly(ev.endTime)}` }),
         el('span', { className: 'muted', textContent: `${cam.name} · ${fmtDur(ev.durationSec)}${ev.length ? ' · ' + fmtSize(ev.length) : ''}` })),
       el('div', { className: 'rec-actions' }, prog, el('button', { textContent: 'Play' }), dlBtn));
   }));
 }
-
-async function downloadClip(rec, channel, btn, prog) {
-  const name = `ch${channel}_${rec.startTime.replace(/[-: ]/g, '')}.dav`;
-  const ctrl = new AbortController();
-  btn.disabled = true; btn.textContent = 'Downloading…'; prog.textContent = '0%';
-  try {
-    const res = await dahua.downloadClip(conn, channel, rec.startTime, rec.endTime, 0, ctrl.signal);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const total = +res.headers.get('content-length') || rec.length || 0;
-    const reader = res.body.getReader();
-
-    // Prefer streaming straight to disk (no memory blow-up on hour-long clips).
-    if (window.showSaveFilePicker) {
-      let handle;
-      try { handle = await window.showSaveFilePicker({ suggestedName: name }); }
-      catch (e) { if (e.name === 'AbortError') { ctrl.abort(); reset(); return; } throw e; }
-      const w = await handle.createWritable();
-      let done = 0;
-      for (;;) { const { value, done: d } = await reader.read(); if (d) break; await w.write(value); done += value.length; prog.textContent = pct(done, total); }
-      await w.close();
-    } else {
-      // Fallback: buffer then anchor-download.
-      const chunks = []; let done = 0;
-      for (;;) { const { value, done: d } = await reader.read(); if (d) break; chunks.push(value); done += value.length; prog.textContent = pct(done, total); }
-      const url = URL.createObjectURL(new Blob(chunks));
-      el('a', { href: url, download: name }).click();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    }
-    prog.textContent = 'saved'; btn.textContent = 'Download'; btn.disabled = false;
-  } catch (e) {
-    prog.textContent = 'failed'; btn.textContent = 'Download'; btn.disabled = false;
-    console.error(e);
-  }
-  function reset() { btn.disabled = false; btn.textContent = 'Download'; prog.textContent = ''; }
-}
-const pct = (done, total) => total ? Math.min(100, Math.round(done / total * 100)) + '%' : (done / 1e6).toFixed(0) + 'MB';
 
 // ---- boot ----------------------------------------------------------------
 const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what)), ms))]);
