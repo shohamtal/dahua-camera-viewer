@@ -15,8 +15,8 @@ const SD_FROM_SPEED = 4;          // switch to the sub stream at this speed
 const S = {
   channel: null, day: null,       // day: "YYYY-MM-DD"
   days: new Set(), daysByChannel: new Map(),
-  files: [], segs: [], motion: [], // segs/motion: {start, end} epoch ms
-  ctl: null, seg: null, pos: null, playing: false,
+  files: [], spans: [], segs: [], motion: [], // spans (per file) / segs (merged) / motion: {start, end} epoch ms
+  ctl: null, seg: null, pos: null, playing: false, emptyRuns: 0,
   speed: 1, sdBroken: false,
   zoom: 86400, winStart: 0,
   pendingSeek: null, token: 0, calMonth: null,
@@ -131,6 +131,7 @@ async function loadDay(day) {
   } catch (e) { if (token === S.token) status('Could not load recordings: ' + e.message); return; }
   if (token !== S.token) return;
   S.files = files.sort((a, b) => a.startTime.localeCompare(b.startTime));
+  S.spans = files.map((f) => ({ start: Math.max(from.getTime(), toMs(f.startTime)), end: Math.min(to.getTime() + 1000, toMs(f.endTime)) })).filter((x) => x.end > x.start);
   S.segs = mergeSegments(files, from.getTime(), to.getTime() + 1000);
   S.motion = motion.map((m) => ({ start: toMs(m.startTime), end: toMs(m.endTime) })).filter((m) => m.start != null);
   const covered = S.segs.reduce((n, s) => n + s.end - s.start, 0);
@@ -145,7 +146,7 @@ async function loadDay(day) {
 }
 
 function clearDay() {
-  S.files = []; S.segs = []; S.motion = []; S.day = null;
+  S.files = []; S.spans = []; S.segs = []; S.motion = []; S.day = null;
   renderTimeline(); renderFiles();
 }
 
@@ -225,15 +226,28 @@ function setPlaying(on) {
   $('pb-toggle').title = on ? 'Pause (space)' : 'Play (space)';
 }
 
-/** Play from ms. Inside a gap → jump to the next recording. */
-function seek(ms) {
+/** The recording file covering ms — the longest-running one when files overlap. */
+function fileAt(ms) {
+  let best = null;
+  for (const f of S.spans) if (ms >= f.start && ms < f.end && (!best || f.end > best.end)) best = f;
+  return best;
+}
+
+/**
+ * Play from ms. Inside a gap → jump to the next recording. Each request covers
+ * one recording file (the NVR stops at the end of the file a request started
+ * in); when it ends, playback continues in the next file.
+ */
+function seek(ms, { auto = false } = {}) {
   if (!S.segs.length) return;
+  if (!auto) S.emptyRuns = 0;
   const d0 = dayStart(S.day);
   ms = Math.max(d0, Math.min(ms, d0 + DAY - 1000));
   const seg = S.segs.find((s) => ms < s.end);
   if (!seg) { stopPlayer(); setPlaying(false); S.pos = S.segs[S.segs.length - 1].end; updatePlayhead(); overlay('No recordings after this time'); return; }
   let note = '';
   if (ms < seg.start) { note = `No video at ${hms(ms)} — jumped to ${hms(seg.start)}`; ms = seg.start; }
+  const end = Math.min(fileAt(ms)?.end ?? seg.end, seg.end);
   stopPlayer();
   S.seg = seg; S.pos = ms;
   updatePlayhead();
@@ -241,18 +255,23 @@ function seek(ms) {
   const subtype = S.speed >= SD_FROM_SPEED && !S.sdBroken ? 1 : 0;
   $('pb-quality').textContent = subtype ? 'SD' : 'HD';
   $('pb-quality').title = subtype ? 'Low-quality stream while playing fast' : 'Full-quality stream';
-  overlay('Loading…');
+  if (!auto) overlay('Loading…');
   if (note) status(note);
-  const ctl = playRecording(conn, S.channel, fmt(ms), fmt(seg.end), $('rec-canvas'), {
+  const ctl = playRecording(conn, S.channel, fmt(ms), fmt(end), $('rec-canvas'), {
     speed: S.speed, subtype,
-    onStatus: (t) => { if (S.ctl === ctl) overlay(t); },
+    onStatus: (t) => { if (S.ctl === ctl && !/^No recording data/.test(t)) overlay(t); },
     onTime: (t) => { if (S.ctl === ctl) { S.pos = t; updatePlayhead(); } },
     onEnded: ({ frames }) => {
       if (S.ctl !== ctl) return;
       // The sub stream isn't stored on every NVR: fall back to the main stream.
-      if (subtype === 1 && !frames) { S.sdBroken = true; seek(S.pos); return; }
-      const next = S.segs[S.segs.indexOf(seg) + 1];
-      if (next) seek(next.start);
+      if (subtype === 1 && !frames) { S.sdBroken = true; seek(S.pos, { auto: true }); return; }
+      S.emptyRuns = frames ? 0 : S.emptyRuns + 1;
+      if (S.emptyRuns >= 3) { stopPlayer(); setPlaying(false); overlay(`The NVR sent no video around ${hms(ms)}`); return; }
+      // Stream stopped early inside the file → pick up where it stopped; else the next file.
+      const next = frames && S.pos < end - 5000 ? S.pos + 1000 : end;
+      if (next < seg.end - 500) { seek(next, { auto: true }); return; }
+      const after = S.segs[S.segs.indexOf(seg) + 1];
+      if (after) seek(after.start, { auto: true });
       else { stopPlayer(); setPlaying(false); overlay('End of recordings for this day'); }
     },
   });
