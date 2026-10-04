@@ -251,3 +251,8 @@ label.check input { width: auto; margin: 0; }
 .rate-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 18px; background: color-mix(in srgb, var(--accent) 14%, var(--card)); border-bottom: 1px solid var(--border); font-size: .88rem; }
 .rate-bar span { flex: 1; min-width: 220px; }
 .rate-bar button { padding: 4px 12px; font-size: .82rem; }
+.confirm { width: min(520px, 94vw); }
+.confirm-body { padding: 16px 18px; }
+.confirm-body p { margin: 0 0 10px; line-height: 1.55; }
+.confirm-body .row { justify-content: flex-end; margin: 14px 0 0; }
+.confirm-body .row button { min-width: 90px; }

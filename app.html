@@ -170,6 +170,18 @@
     </main>
   </div>
 
+  <!-- Export confirmation: nothing downloads until OK -->
+  <div id="ex-confirm" class="modal hidden">
+    <div class="modal-inner confirm" role="dialog" aria-labelledby="exc-title">
+      <div class="modal-head"><strong id="exc-title">Export MP4</strong><button id="exc-close" class="ghost" aria-label="Close">✕</button></div>
+      <div class="confirm-body">
+        <p id="exc-text"></p>
+        <p id="exc-note" class="muted small"></p>
+        <div class="row"><button id="exc-ok" class="primary">OK</button><button id="exc-cancel" class="ghost">Cancel</button></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Report a problem: shown to the user, sent only by their own click -->
   <div id="report-modal" class="modal hidden">
     <div class="modal-inner report">

@@ -425,7 +425,11 @@ function wireExport() {
     syncExportInputs();
   });
   $('ex-end-here').addEventListener('click', () => { if (S.pos != null) { S.ex.end = S.pos; syncExportInputs(); } });
-  $('ex-go').addEventListener('click', runExport);
+  $('ex-go').addEventListener('click', confirmExport);
+  $('exc-ok').addEventListener('click', () => { closeConfirm(); runExport(); }); // OK is the click that starts it
+  for (const id of ['exc-cancel', 'exc-close']) $(id).addEventListener('click', closeConfirm);
+  $('ex-confirm').addEventListener('click', (e) => { if (e.target.id === 'ex-confirm') closeConfirm(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('ex-confirm').classList.contains('hidden')) closeConfirm(); });
   $('ex-cancel').addEventListener('click', () => S.ex.ctrl?.abort());
 }
 
@@ -491,6 +495,40 @@ function exportName() {
   const to = b.slice(0, 10) === a.slice(0, 10) ? b.slice(11).replace(/:/g, '-') : b.replace(/:/g, '-').replace(' ', '_');
   return `${cam}_${a}_to_${to}.mp4`;
 }
+
+const longDate = (ms) => new Date(ms).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+function spoken(ms) {
+  const s = Math.round(ms / 1000), m = Math.floor(s / 60), r = s % 60;
+  const part = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  return m && r ? `${part(m, 'minute')} ${part(r, 'second')}` : m ? part(m, 'minute') : part(r, 'second');
+}
+
+/** Summary pop-up: "You are about to export … (15 minutes)" — nothing starts until OK. */
+function confirmExport() {
+  const { start, end } = S.ex;
+  if (!(end > start)) return;
+  const sameDay = localDate(new Date(start)) === localDate(new Date(end));
+  const cam = cameras.find((c) => c.channel === S.channel)?.name || `Camera ${S.channel}`;
+  $('exc-text').replaceChildren(
+    'You are about to export MP4 video from ',
+    el('strong', { textContent: `${longDate(start)}, ${hms(start)}` }),
+    ' to ',
+    el('strong', { textContent: sameDay ? hms(end) : `${longDate(end)}, ${hms(end)}` }),
+    ` (${spoken(end - start)}) from `,
+    el('strong', { textContent: cam }), '.');
+  // Rough size from this day's files (bytes per second of recording).
+  let bytes = 0, secs = 0;
+  for (const f of S.files) if (f.length && f.durationSec && !dahua.isMotion(f)) { bytes += f.length; secs += f.durationSec; }
+  const notes = [];
+  if (secs) notes.push(`About ${fmtSize(bytes / secs * (end - start) / 1000)}.`);
+  const info = $('ex-info').textContent.match(/· (.+)$/);
+  if (info) notes.push(info[1][0].toUpperCase() + info[1].slice(1) + '.');
+  notes.push('Video only, copied as recorded (no re-encoding).');
+  $('exc-note').textContent = notes.join(' ');
+  $('ex-confirm').classList.remove('hidden');
+  $('exc-ok').focus(); // Enter = OK
+}
+function closeConfirm() { $('ex-confirm').classList.add('hidden'); }
 
 async function runExport() {
   const name = exportName(), { start, end } = S.ex;
