@@ -21,16 +21,19 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
 | `background.js` | Service worker. Sole job: open `app.html` in a tab when the toolbar icon is clicked. |
 | `app.html` | Login screen + app shell (Live/Recordings/Events/Admin tabs, fullscreen modal, Recordings player + timeline). |
 | `app.js` | App shell: login/auto-reconnect, saved NVR list + top-bar switcher, tab switching (`showView`), live grid (thumbnails + on-demand streaming), fullscreen, Events tab (per-camera 24h strip + list → opens the moment on the Recordings timeline). |
-| `recordings-ui.js` | Recordings tab: calendar that marks days with video, one 24h timeline per day (recorded spans, motion marks, zoom 24h/1h/10m, click/drag to play), 1×–16× speed, next/previous motion, file list + downloads. |
+| `recordings-ui.js` | Recordings tab: calendar that marks days with video, one 24h timeline per day (recorded spans, motion marks, zoom 24h/1h/10m, click/drag to play), speed 1×–8×/Max, next/previous motion, MP4 export panel (≤ 20 min), file list + .dav downloads. |
 | `admin-ui.js` | Admin tab (Security, Users, Log, Streams, Clock sub-sections) over `lib/admin.js`. Sections load on first open and re-read the device after each change. |
 | `style.css` | Dark/light theme, grid, modals, playback controls, event strips, admin tables/forms. |
 | `lib/md5.js` | Pure-JS MD5 (Web Crypto has no MD5; Digest auth needs it). |
 | `lib/dahua.js` | **Isomorphic** Dahua client (browser + Node): digest fetch, device info, channels, snapshot, MJPEG stream, find recordings / motion events, download clip. |
 | `lib/admin.js` | **Isomorphic** NVR admin calls shared by the Admin tab and Node: users, log, exposure/firmware checks, sub-stream config, clock. Read-only test: `test/admin-read.mjs`. |
+| `lib/dhav.js` | **Isomorphic** DHAV (.dav) reader shared by player and export: `readDhav(body)` yields H.264 frames (slice NALs, SPS/PPS, ms counter, wall-clock time); AVCC/avcC helpers. |
+| `lib/mp4.js` | **Isomorphic** MP4 export without re-encoding: `exportMp4()` streams a time range (one request per recording file), writes samples to a sink as they arrive, index (`moov`) at the end; `spsSize()` reads the picture size from the SPS. |
 | `lib/h264play.js` | Recording player: streams a bounded `.dav`, demuxes DHAV → H.264, decodes via WebCodecs to a canvas. Variable speed (key frames only from 8×), main/sub stream, reports the recording's wall-clock time from DHAV headers. |
 | `scripts/nvr.mjs` | Node CLI for NVR admin (users, passwords, log, UPnP/P2P exposure) via `userManager.cgi` / `log.cgi` / `configManager.cgi`. Manual: `docs/NVR-CLI.md`. Output contains secrets — never commit it. |
 | `test/node-smoke.mjs` | Runs the shared client against a real device from Node (no CORS in Node) to prove the digest/MJPEG/find/motion/download logic. |
 | `test/playback-probe.mjs` | Read-only check of playback assumptions on a real NVR: DHAV timestamps vs requested time, whether the sub stream is stored, real streaming speed, what a no-video time returns. |
+| `test/export-mp4.mjs` | Export a window from a real NVR to an MP4 file from Node (check it with `ffprobe`). |
 | `test/admin-read.mjs` | Read-only check of `lib/admin.js` against a real device (`NVR_HOST`/`NVR_USER`/`NVR_PASS` env). Makes no changes. |
 | `icons/` | Extension icons (SVG source + rasterized 16/32/48/128). Regenerate with `rsvg-convert -w N -h N icon.svg -o icon-N.png`. |
 
@@ -86,6 +89,13 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   answers **HTTP 400**.
 - Measured on NVR4108 fw 3.215 with `test/playback-probe.mjs`: DHAV timestamps
   match the requested time exactly; 25 fps, key frame every 2 s.
+- **MP4 export** copies the NVR's H.264 into MP4 (no re-encode, no audio): samples
+  are written as they arrive, `moov` last, and the 64-bit `mdat` header is patched
+  at the end (`writeAt(0, …)` — after the `moov` write, because a positional write
+  moves a File System Access stream's cursor). Sample durations come from the DHAV
+  ms counter; across requests/gaps they fall back to the typical frame duration,
+  so gaps are skipped rather than frozen. Capped at 20 min (~600 MB on an NVR4108
+  main stream, ~2 min to export at ~9× real time). H.265 cameras aren't supported.
 - **Days with video**: no dedicated API — one `findFile` over the last 35 days
   (paged by 100), bucketed by day. A time inside a gap is snapped to the next
   recorded span before requesting (unverified what an NVR streams for a gap —
@@ -136,7 +146,8 @@ Forgetting an NVR also drops its host permission.
 - Test after changes to the client with:
   `node test/node-smoke.mjs <ip> <user> <pass>` and
   `NVR_HOST=<ip> NVR_PASS=… node test/admin-read.mjs` and
-  `NVR_HOST=<ip> NVR_PASS=… node test/playback-probe.mjs` (need a reachable device).
+  `NVR_HOST=<ip> NVR_PASS=… node test/playback-probe.mjs` (need a reachable device);
+  MP4 export: `node test/export-mp4.mjs <ch> "<start>" <minutes>` then `ffprobe`.
 - Anything in the Admin tab that writes to the NVR must `confirm()` first when it
   is destructive (delete, password reset, turning P2P off / UPnP on).
 - Icons: edit `icons/icon.svg`, then re-rasterize the four PNGs.

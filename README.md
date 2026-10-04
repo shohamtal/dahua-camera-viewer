@@ -31,6 +31,10 @@ auth** from JavaScript.
     NVR4108 over a home network) to skim an hour in minutes.
   - Only the bytes you watch are streamed — H.264 is demuxed from Dahua's
     `.dav`/DHAV container and decoded with the browser's built-in **WebCodecs**.
+  - **Export MP4**: pick a start and end (up to 20 minutes — the playhead buttons
+    make it quick) and save a clip as `.mp4` that plays on any phone or computer.
+    The video is copied as recorded, not re-encoded, so it's fast and full quality
+    (video only; H.264 cameras).
   - **Download** the raw `.dav` files (open in VLC or Dahua Smart Player).
 - **Motion events** — pick a date (one camera or all of them) and see every motion
   alert as marks on a 24-hour strip per camera, plus a newest-first list. Click a

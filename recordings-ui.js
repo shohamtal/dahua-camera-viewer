@@ -4,6 +4,7 @@
 // (as fast as the NVR streams — ~9× measured on an NVR4108 over LAN).
 import * as dahua from './lib/dahua.js';
 import { playRecording } from './lib/h264play.js';
+import { exportMp4, MAX_EXPORT_MS } from './lib/mp4.js';
 
 let conn = null;
 let cameras = [];
@@ -20,6 +21,7 @@ const S = {
   speed: 1, sdBroken: false,
   zoom: 86400, winStart: 0,
   pendingSeek: null, token: 0, calMonth: null,
+  ex: { open: false, start: null, end: null, ctrl: null }, // MP4 export panel
 };
 
 function el(tag, props = {}, ...kids) {
@@ -52,6 +54,7 @@ export function initRecordings(c, cams, opts = {}) {
   $('pb-next-motion').addEventListener('click', () => jumpMotion(1));
   $('pb-speed').addEventListener('change', (e) => setSpeed(+e.target.value));
   document.querySelectorAll('#tl-zoom button').forEach((b) => b.addEventListener('click', () => setZoom(+b.dataset.zoom)));
+  wireExport();
   wireTimeline();
   document.addEventListener('keydown', onKey);
 }
@@ -350,6 +353,7 @@ function renderTimeline() {
     const label = `${two(d.getHours())}:${two(d.getMinutes())}`;
     kids.push(el('div', { className: 'tl-tick', style: `left:${x(t)}` }, el('span', { textContent: label })));
   }
+  if (S.ex.open && S.ex.end > S.ex.start && S.ex.end > ws && S.ex.start < we) kids.push(el('div', { className: 'tl-sel', style: `left:${x(Math.max(S.ex.start, ws))};width:${w(S.ex.start, S.ex.end)}`, title: 'Export range' }));
   kids.push(el('div', { id: 'tl-head', className: 'tl-head' }), el('div', { id: 'tl-hover', className: 'tl-hover' }));
   bar.replaceChildren(...kids);
   $('tl-range').textContent = span >= DAY ? '' : `${hms(ws).slice(0, 5)} – ${hms(we).slice(0, 5)}`;
@@ -394,6 +398,150 @@ function wireTimeline() {
     S.winStart += (e.deltaY || e.deltaX) / 600 * S.zoom * 1000 * 0.25;
     renderTimeline();
   }, { passive: false });
+}
+
+// ---------- MP4 export ----------
+
+const toInput = (ms) => fmt(ms).replace(' ', 'T');
+const fromInput = (v) => { const m = (v || '').match(/(\d+)-(\d+)-(\d+)T(\d+):(\d+)(?::(\d+))?/); return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)).getTime() : null; };
+const mmss = (ms) => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${two(s % 60)}`; };
+
+function wireExport() {
+  $('pb-export').addEventListener('click', () => (S.ex.open ? closeExport() : openExport()));
+  $('ex-close').addEventListener('click', closeExport);
+  $('ex-start').addEventListener('input', readExportInputs);
+  $('ex-end').addEventListener('input', readExportInputs);
+  $('ex-start-here').addEventListener('click', () => {
+    if (S.pos == null) return;
+    const len = S.ex.end - S.ex.start;
+    S.ex.start = S.pos;
+    if (!(len > 0 && len <= MAX_EXPORT_MS)) S.ex.end = S.pos + 5 * 60e3;
+    else S.ex.end = S.pos + len; // keep the chosen length
+    syncExportInputs();
+  });
+  $('ex-end-here').addEventListener('click', () => { if (S.pos != null) { S.ex.end = S.pos; syncExportInputs(); } });
+  $('ex-go').addEventListener('click', runExport);
+  $('ex-cancel').addEventListener('click', () => S.ex.ctrl?.abort());
+}
+
+function openExport() {
+  if (!S.segs.length) { status('No recordings on this day to export'); return; }
+  const lastEnd = S.segs[S.segs.length - 1].end;
+  const start = S.pos ?? Math.max(S.segs[0].start, lastEnd - 5 * 60e3);
+  S.ex.start = start; S.ex.end = Math.min(start + 5 * 60e3, lastEnd > start ? lastEnd : start + 5 * 60e3);
+  S.ex.open = true;
+  $('rec-export').classList.remove('hidden');
+  $('pb-export').classList.add('active');
+  $('ex-msg').textContent = '';
+  syncExportInputs();
+}
+
+function closeExport() {
+  if (S.ex.ctrl) return; // finish or cancel the running export first
+  S.ex.open = false;
+  $('rec-export').classList.add('hidden');
+  $('pb-export').classList.remove('active');
+  renderTimeline();
+}
+
+function syncExportInputs() {
+  $('ex-start').value = toInput(S.ex.start);
+  $('ex-end').value = toInput(S.ex.end);
+  validateExport();
+}
+
+function readExportInputs() {
+  S.ex.start = fromInput($('ex-start').value);
+  S.ex.end = fromInput($('ex-end').value);
+  validateExport();
+}
+
+/** Check the range, explain what will happen, and enable the button only when it can work. */
+function validateExport() {
+  const { start, end } = S.ex;
+  let info = '', ok = false;
+  if (start == null || end == null) info = 'Pick a start and an end';
+  else if (end <= start) info = 'The end must be after the start';
+  else if (end - start > MAX_EXPORT_MS) info = `Up to ${MAX_EXPORT_MS / 60e3} minutes per export (this is ${mmss(end - start)})`;
+  else {
+    const d0 = dayStart(S.day), d1 = d0 + DAY;
+    const covered = S.segs.reduce((n, s) => n + Math.max(0, Math.min(s.end, end) - Math.max(s.start, start)), 0);
+    const outside = Math.max(0, d0 - start) + Math.max(0, end - d1); // other days: checked when exporting
+    if (!covered && !outside) info = 'No recording in this range';
+    else {
+      ok = true;
+      const missing = end - start - covered - outside;
+      info = `${mmss(end - start)} long` + (missing > 2000 ? ` · ${mmss(missing)} without recording will be skipped` : '');
+    }
+  }
+  $('ex-info').textContent = info;
+  $('ex-info').classList.toggle('error', !ok);
+  $('ex-go').disabled = !ok || !!S.ex.ctrl;
+  renderTimeline();
+}
+
+function exportName() {
+  const cam = (cameras.find((c) => c.channel === S.channel)?.name || `ch${S.channel}`).replace(/[\\/:*?"<>|\s]+/g, '_');
+  const a = fmt(S.ex.start).replace(/:/g, '-').replace(' ', '_'), b = fmt(S.ex.end);
+  const to = b.slice(0, 10) === a.slice(0, 10) ? b.slice(11).replace(/:/g, '-') : b.replace(/:/g, '-').replace(' ', '_');
+  return `${cam}_${a}_to_${to}.mp4`;
+}
+
+async function runExport() {
+  const name = exportName(), { start, end } = S.ex;
+  const msg = $('ex-msg'); msg.textContent = ''; msg.className = 'msg';
+  // Where to save — ask first, while the click still counts as a user gesture.
+  let sink;
+  if (window.showSaveFilePicker) {
+    let handle;
+    try { handle = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: 'MP4 video', accept: { 'video/mp4': ['.mp4'] } }] }); }
+    catch (e) { if (e.name === 'AbortError') return; throw e; }
+    const w = await handle.createWritable();
+    sink = {
+      write: (d) => w.write(d),
+      writeAt: (position, d) => w.write({ type: 'write', position, data: d }),
+      close: () => w.close(),
+      abort: () => w.abort().catch(() => {}),
+    };
+  } else {
+    // Fallback: build the file in memory, then download it.
+    const parts = [];
+    sink = {
+      write: (d) => { parts.push(d); },
+      writeAt: (_, d) => { parts[0] = d; }, // the only positional write is the header, which is part 0
+      close: () => {
+        const url = URL.createObjectURL(new Blob(parts, { type: 'video/mp4' }));
+        el('a', { href: url, download: name }).click();
+        setTimeout(() => URL.revokeObjectURL(url), 60e3);
+      },
+      abort: () => { parts.length = 0; },
+    };
+  }
+  const ctrl = S.ex.ctrl = new AbortController();
+  setExportBusy(true);
+  try {
+    const r = await exportMp4(conn, S.channel, start, end, sink, {
+      signal: ctrl.signal,
+      onProgress: (p) => { $('ex-bar').style.width = `${Math.round(p * 100)}%`; },
+    });
+    msg.textContent = `Saved ${name} — ${mmss(r.seconds * 1000)} of video, ${r.width}×${r.height}` + (r.skippedMs > 2000 ? ` (${mmss(r.skippedMs)} without recording skipped)` : '');
+  } catch (e) {
+    await sink.abort?.();
+    msg.textContent = e.name === 'AbortError' ? 'Export cancelled' : 'Export failed: ' + e.message;
+    msg.classList.add('error');
+  } finally {
+    S.ex.ctrl = null;
+    setExportBusy(false);
+  }
+}
+
+function setExportBusy(on) {
+  for (const id of ['ex-start', 'ex-end', 'ex-start-here', 'ex-end-here', 'ex-close']) $(id).disabled = on;
+  $('ex-cancel').classList.toggle('hidden', !on);
+  $('ex-progress').classList.toggle('hidden', !on);
+  $('ex-bar').style.width = '0%';
+  if (on) $('ex-go').disabled = true; else validateExport();
+  $('ex-go').textContent = on ? 'Exporting…' : 'Export MP4';
 }
 
 // ---------- files (downloads) ----------
