@@ -8,7 +8,7 @@ OUT="dist/dahua-camera-viewer-${VERSION}.zip"
 
 rm -rf dist && mkdir -p dist
 zip -r -X "$OUT" \
-  manifest.json app.html app.js admin-ui.js recordings-ui.js feedback.js style.css background.js \
+  manifest.json app.html whats-new.html app.js admin-ui.js recordings-ui.js feedback.js style.css background.js \
   lib icons \
   -x '*.DS_Store' >/dev/null
 
