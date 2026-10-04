@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>What's new — Dahua Camera Viewer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="whatsnew-body">
+  <!-- Opened once after a feature update (background.js). Static: no scripts, no network. -->
+  <main class="card whatsnew">
+    <img src="icons/icon-128.png" alt="" width="56" height="56" />
+    <h1>What's new in 1.2</h1>
+    <p class="sub">Dahua Camera Viewer has been updated.</p>
+
+    <div class="wn-fix">
+      <strong>Important fix for NVRs with more than one camera.</strong>
+      Earlier versions searched and played recordings of the <em>previous</em> camera
+      (camera 2 showed camera 1's video, and so on), and some cameras showed "no recordings".
+      Every camera now shows and plays its own recordings.
+    </div>
+
+    <h2>Recordings, rebuilt</h2>
+    <ul>
+      <li><strong>Calendar</strong> that marks the days that actually have video.</li>
+      <li><strong>One 24-hour timeline</strong> per day — click or drag anywhere to play from that moment. Zoom 24h / 1h / 10m.</li>
+      <li><strong>Fast playback</strong>: 2×, 4×, 8× and Max.</li>
+      <li><strong>◀ Motion ▶</strong> jumps between motion events (when the NVR records motion).</li>
+      <li><strong>Export MP4</strong>: save up to 20 minutes as an .mp4 that plays on any phone or computer — full quality, no re-encoding.</li>
+    </ul>
+
+    <h2>Also new</h2>
+    <ul>
+      <li><strong>Report a problem</strong> (⚑ in the top bar): shows you a report with addresses, serials and names hidden, and opens a pre-filled GitHub issue — nothing is sent unless you submit it.</li>
+      <li>A warning when the NVR's clock is off (for example, daylight saving time not set).</li>
+      <li>Playback no longer stops at the hour mark, and jumping on the timeline keeps the last picture with a spinner.</li>
+    </ul>
+
+    <p class="wn-actions">
+      <a class="wn-btn" href="app.html">Open Dahua Camera Viewer</a>
+      <a href="https://github.com/shohamtal/dahua-camera-viewer/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Full changelog</a>
+    </p>
+  </main>
+</body>
+</html>
