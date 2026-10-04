@@ -22,16 +22,24 @@ auth** from JavaScript.
     **⤢** open it fullscreen.
   - Thumbnails show an instant first frame, then upgrade to a sharp full-res
     snapshot in the background.
-- **Recordings** — search by camera + date, then either:
-  - **Play in the browser** with a real timeline: scrub bar, ⏮/⏭ skip ±1 min,
-    play/pause. Only the bytes you actually watch are streamed — no 1.8 GB
-    download to see 10 seconds. (H.264 is demuxed from Dahua's `.dav`/DHAV
-    container and decoded with the browser's built-in **WebCodecs**.)
-  - **Download** the raw `.dav` clip (opens in VLC or Dahua Smart Player).
-  - Clips the NVR recorded because of motion are labelled **motion**.
+- **Recordings** — a calendar that marks the days that actually have video, and one
+  **24-hour timeline** per day: recorded spans and the NVR's motion marks are drawn
+  on it; click or drag anywhere to play from that moment.
+  - Zoom 24h / 1h / 10m, hover to see the time, ◀ Motion ▶ jumps between motion
+    events (Shift+←/→), ±10 s (←/→), space to pause.
+  - **Speed 1×–8× and Max** (as fast as the NVR can stream — about 9× on an
+    NVR4108 over a home network) to skim an hour in minutes.
+  - Only the bytes you watch are streamed — H.264 is demuxed from Dahua's
+    `.dav`/DHAV container and decoded with the browser's built-in **WebCodecs**.
+  - **Export MP4**: pick a start and end (up to 20 minutes — the playhead buttons
+    make it quick) and save a clip as `.mp4` that plays on any phone or computer.
+    The video is copied as recorded, not re-encoded, so it's fast and full quality
+    (video only; H.264 cameras).
+  - **Download** the raw `.dav` files (open in VLC or Dahua Smart Player).
 - **Motion events** — pick a date (one camera or all of them) and see every motion
   alert as marks on a 24-hour strip per camera, plus a newest-first list. Click a
-  mark or a row to play that moment; back-to-back clips are merged into one event.
+  mark or a row to open that moment on the Recordings timeline; back-to-back clips
+  are merged into one event.
   (Uses the NVR's own motion-flagged recordings, so motion recording must be on.)
 - **Admin** — manage the NVR itself from the browser:
   - **Security** — firmware age (flags builds vulnerable to the actively exploited
@@ -50,6 +58,9 @@ auth** from JavaScript.
   with any Dahua-compatible device. It reconnects to the last NVR on open;
   passwords are remembered only if you tick "Remember", and **Sign out** forgets
   just that NVR's password.
+- **Report a problem** — one click shows a report (errors, versions, NVR model;
+  addresses, serials, usernames and camera names hidden) and opens a pre-filled
+  GitHub issue. Nothing is sent unless you submit it.
 - **Dark / light** theme follows your OS.
 
 <p align="center">
@@ -163,6 +174,11 @@ Built and tested against a **DHI-NVR4108-8P-4KS2**. Should work with most Dahua 
 Dahua-OEM devices that expose the standard HTTP-CGI API (most do). Live view is
 limited to whatever the substream provides (typically D1); recordings play at full
 resolution.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). After a feature update the extension opens a short
+"What's new" page once (it's bundled — nothing is fetched).
 
 ## License
 

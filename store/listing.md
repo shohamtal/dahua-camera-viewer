@@ -18,19 +18,27 @@ English
 
 <!-- One line per paragraph: the store keeps line breaks as typed. -->
 
-View your Dahua NVR, DVR, or IP cameras straight from Chrome — no NPAPI/ActiveX plugin and no server required.
+View your Dahua NVR, DVR, or IP cameras straight from Chrome — live view, recordings playback and MP4 export, with no NPAPI/ActiveX "webplugin" and no server.
 
 Project's repository: https://github.com/shohamtal/dahua-camera-viewer
 
-Dahua's built-in web interface still relies on the old "webplugin" that modern browsers removed years ago, so live video no longer works there. This extension talks to your device directly using its standard HTTP API, so everything runs in your browser on your own network.
+Dahua's built-in web interface still relies on the old "webplugin" that modern browsers removed years ago, so live video and playback no longer work there. This extension talks to your NVR directly using its standard HTTP API, so everything runs in your browser on your own network — a lightweight alternative to SmartPSS on the desktop.
+
+NEW IN 1.2
+• Recordings rebuilt: a calendar that marks the days with video, and one 24-hour timeline per day — click anywhere to play from that moment.
+• Export MP4: save up to 20 minutes as an .mp4 that plays on any phone or computer (full quality, no re-encoding).
+• Fast playback (2×–8× and Max) and jumps between motion events.
+• Fixed: on NVRs with several cameras, recordings now always belong to the right camera.
 
 FEATURES
-• Live grid of all channels as snapshot thumbnails — click a camera to start its live stream, or open it fullscreen. Nothing streams until you ask.
-• Recordings with a real timeline: play in the browser, scrub, and skip forward/back — only the part you watch is streamed, so no giant downloads just to find a moment. You can also download the raw clip.
-• Motion events: every motion alert of the day on a 24-hour strip per camera — click one to jump straight into that recording.
-• Admin tools for your own NVR: security check (outdated firmware, UPnP port forwards, P2P, who's logged in), limited per-person accounts, device log, stream and clock settings.
+• Live view: a grid of all channels as snapshot thumbnails — click a camera to stream it live, or open it fullscreen. Nothing streams until you ask.
+• Playback: pick a day on the calendar, scrub the 24-hour timeline, zoom in to the minute, skip ±10 s, play up to 8× or as fast as the NVR sends. Only the part you watch is streamed.
+• Export MP4 clips (up to 20 minutes) or download the original .dav files.
+• Motion events: every motion alert of the day per camera — click one to jump straight into that recording.
+• NVR admin and security check: outdated firmware, UPnP port forwards, P2P cloud, who's logged in right now, unknown admin accounts; limited per-person accounts (for neighbours, family, a guard), device log, stream and clock settings.
 • Several NVRs (e.g. one per building): save them all and switch from the top bar.
-• Works with any device that supports the standard Dahua HTTP-CGI API.
+• Report a problem in one click — you see the report first, with addresses, serials and names hidden.
+• Works with Dahua NVRs, DVRs and IP cameras that support the standard Dahua HTTP-CGI API (H.264).
 • Dark / light theme.
 • 100% local: your credentials and video never leave your computer and your device. No accounts, no cloud, no tracking, no ads.
 

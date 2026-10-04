@@ -1,11 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "Dahua Camera Viewer",
-  "version": "1.1.1",
-  "description": "Plugin-free viewer for Dahua NVR/DVR/IP cameras: live MJPEG + recordings, directly over your LAN. No server required.",
-  "permissions": ["storage"],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
-  "background": { "service_worker": "background.js" },
+  "name": "Dahua Camera Viewer – Live, Playback, MP4 Export & NVR Admin",
+  "version": "1.2.0",
+  "description": "View Dahua NVR/DVR cameras in Chrome without the web plugin: live view, 24h playback timeline, MP4 export, motion events, admin.",
+  "permissions": [
+    "storage"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Open Dahua Camera Viewer",
     "default_icon": {
@@ -20,5 +27,6 @@
     "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
-  }
+  },
+  "short_name": "Dahua Viewer"
 }
