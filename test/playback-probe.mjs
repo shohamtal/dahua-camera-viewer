@@ -4,7 +4,7 @@
 // NVR stream (max useful speed), and what comes back for a time with no video.
 //   NVR_HOST=192.168.1.108 NVR_USER=admin NVR_PASS=... node test/playback-probe.mjs [channel]
 import * as dahua from '../lib/dahua.js';
-import { dhavTime } from '../lib/h264play.js';
+import { dhavTime } from '../lib/dhav.js';
 
 const { NVR_HOST, NVR_USER = 'admin', NVR_PASS } = process.env;
 if (!NVR_HOST || !NVR_PASS) { console.error('set NVR_HOST and NVR_PASS'); process.exit(1); }

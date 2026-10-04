@@ -98,6 +98,23 @@
           <span class="spacer"></span>
           <button id="pb-prev-motion" title="Previous motion (Shift+←)">◀ Motion</button>
           <button id="pb-next-motion" title="Next motion (Shift+→)">Motion ▶</button>
+          <button id="pb-export" title="Save a clip of up to 20 minutes as MP4">⤓ Export MP4</button>
+        </div>
+        <div id="rec-export" class="export hidden">
+          <div class="ex-row">
+            <label class="inline">From <input id="ex-start" type="datetime-local" step="1" /></label>
+            <button id="ex-start-here" type="button" title="Use the playhead position">⌖ Playhead</button>
+            <label class="inline">To <input id="ex-end" type="datetime-local" step="1" /></label>
+            <button id="ex-end-here" type="button" title="Use the playhead position">⌖ Playhead</button>
+            <span id="ex-info" class="muted"></span>
+          </div>
+          <div class="ex-row">
+            <button id="ex-go" class="primary">Export MP4</button>
+            <button id="ex-cancel" class="ghost hidden">Cancel</button>
+            <button id="ex-close" class="ghost">Close</button>
+            <div id="ex-progress" class="ex-progress hidden"><div id="ex-bar"></div></div>
+            <span id="ex-msg" class="msg"></span>
+          </div>
         </div>
         <div class="tl">
           <div class="tl-top">

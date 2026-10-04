@@ -226,3 +226,15 @@ label.check input { width: auto; margin: 0; }
 .player-video .rec-overlay { background: rgba(0,0,0,.55); color: #e8eaed; }
 .spinner { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; border: 4px solid rgba(255,255,255,.25); border-top-color: #fff; background: rgba(0,0,0,.35); animation: spin .8s linear infinite; pointer-events: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* recordings: MP4 export */
+.export { padding: 10px 14px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
+.ex-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.export input[type=datetime-local] { margin: 0; padding: 5px 8px; width: auto; }
+.export button { padding: 5px 12px; font-size: .85rem; }
+.ex-progress { flex: 1; min-width: 120px; max-width: 320px; height: 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); overflow: hidden; }
+#ex-bar { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+#ex-info.error { color: var(--danger); }
+.export .msg { margin: 0; min-height: 0; }
+#pb-export.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tl-sel { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, #3fb950 30%, transparent); border-left: 2px solid #3fb950; border-right: 2px solid #3fb950; pointer-events: none; }
