@@ -58,7 +58,10 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   reads `.dav` from a *file* but not from a pipe (DHII framing) — irrelevant here
   since we demux in JS, but noted.
 - **DHAV demux**: frames start with ASCII `DHAV`; frame length is a `u32LE` at
-  offset `+12`; drop the trailing 8-byte footer. Inside is Annex-B H.264.
+  offset `+12`; the header is 24 bytes **plus an extension whose length is the byte
+  at `+22`**; drop the trailing 8-byte footer. In between is Annex-B H.264. Never
+  scan the header for start codes — its sequence/length/time bytes can contain
+  `00 00 01`, which glues junk onto a NAL and kills the decoder ("Decoding error").
 - **WebCodecs feed**: configure `VideoDecoder` with an **avcC `description`** built
   from SPS(type 7)/PPS(type 8), and feed each frame's **VCL NALs** (type 1 non-IDR,
   5 IDR) as **4-byte length-prefixed (AVCC)**. Drop AUD(9)/SEI(6). Start decoding
@@ -66,9 +69,10 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   "Decoding error".
 - **Seek** in recordings is implemented by **re-requesting** the `.dav` stream from
   a new start time, then restarting the decoder — there's no random access inside
-  the container. `startLoad` is **time-based**, not file-based, so the timeline
-  plays from any moment; the player streams to the end of the contiguous recorded
-  span and the UI continues at the next span when it ends (`onEnded`).
+  the container. `startLoad` takes **any start time**, so the timeline plays from
+  any moment — but each request is bounded to the **recording file** it starts in
+  (the NVR stops at the file's end); on `onEnded` the UI continues in the next
+  file / recorded span. A decode error resyncs at the next key frame.
 - **DHAV header**: `+4` frame type (`0xFD` I, `0xFC` P), `+16` packed local
   date-time (sec 6 bits, min 6, hour 5, day 5, month 4, year−2000 6 — as in
   ffmpeg's dhav demuxer), `+20` u16 millisecond counter. The player paces by the
