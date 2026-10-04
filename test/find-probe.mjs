@@ -26,11 +26,11 @@ const cams = await listChannels(conn);
 const rm = (await get('/cgi-bin/configManager.cgi?action=getConfig&name=RecordMode')).body;
 console.log('record mode per channel:', cams.map((c) => `${c.channel}=${(rm.match(new RegExp(`RecordMode\\[${c.channel - 1}\\]\\.Mode=(\\d+)`)) || [])[1] ?? '?'}`).join(' '));
 
-async function find(channelIndex, from, to, extra = '') {
+async function find(channel, from, to, extra = '') { // channel: 1-based, as the NVR expects
   const { body: created } = await get('/cgi-bin/mediaFileFind.cgi?action=factory.create');
   const object = (created.match(/result=(\S+)/) || [])[1];
   if (!object) return `factory.create failed: ${short(created)}`;
-  const f = await get(`/cgi-bin/mediaFileFind.cgi?action=findFile&object=${object}&condition.Channel=${channelIndex}` +
+  const f = await get(`/cgi-bin/mediaFileFind.cgi?action=findFile&object=${object}&condition.Channel=${channel}` +
     `&condition.StartTime=${encodeURIComponent(fmt(from))}&condition.EndTime=${encodeURIComponent(fmt(to))}${extra}`);
   let out = `HTTP ${f.status}`;
   if (f.status === 200) {
@@ -47,7 +47,7 @@ async function find(channelIndex, from, to, extra = '') {
 // 3. Today's search on every channel.
 const now = new Date(), day0 = new Date(now); day0.setHours(0, 0, 0, 0);
 console.log('\nsearch today, per channel:');
-for (const c of cams) console.log(`  ch ${c.channel}: ${await find(c.channel - 1, day0, now)}`);
+for (const c of cams) console.log(`  ch ${c.channel}: ${await find(c.channel, day0, now)}`);
 
 // 4. Variants of the search for this channel.
 console.log(`\nch ${ch} variants (today):`);
@@ -59,8 +59,8 @@ const variants = [
   ['Types jpg', '&condition.Types[0]=jpg'],
   ['VideoStream Main', '&condition.VideoStream=Main'],
 ];
-for (const [label, extra] of variants) console.log(`  ${label.padEnd(17)} ${await find(ch - 1, day0, now, extra)}`);
-console.log(`  ${'Channel=' + ch + ' (1-based)'.padEnd(10)} ${await find(ch, day0, now)}`);
+for (const [label, extra] of variants) console.log(`  ${label.padEnd(17)} ${await find(ch, day0, now, extra)}`);
+console.log(`  ${'Channel=' + (ch - 1) + ' (0-based)'.padEnd(10)} ${await find(ch - 1, day0, now)}`);
 
 // 5. Does playback work for this channel even though the search doesn't?
 for (const c of [ch, 1]) {
