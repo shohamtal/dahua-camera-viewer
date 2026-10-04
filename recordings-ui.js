@@ -1,6 +1,7 @@
 // Recordings tab: pick a camera and a day (the calendar marks days that have
 // video), then scrub one 24-hour timeline. Coverage and the NVR's motion marks
-// are drawn on it; clicking anywhere plays from that moment, at 1×–16×.
+// are drawn on it; clicking anywhere plays from that moment, at 1×–8× or Max
+// (as fast as the NVR streams — ~9× measured on an NVR4108 over LAN).
 import * as dahua from './lib/dahua.js';
 import { playRecording } from './lib/h264play.js';
 
@@ -81,7 +82,7 @@ export function goToRecording(channel, startTime) {
 
 async function selectCamera(channel, preferDay) {
   stopPlayer(); setPlaying(false);
-  S.channel = channel; S.sdBroken = false;
+  S.channel = channel; // sdBroken stays: whether the sub stream is stored is per NVR
   const token = ++S.token;
   status('Checking which days have video…');
   let days = S.daysByChannel.get(channel);

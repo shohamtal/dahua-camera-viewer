@@ -27,8 +27,8 @@ auth** from JavaScript.
   on it; click or drag anywhere to play from that moment.
   - Zoom 24h / 1h / 10m, hover to see the time, ◀ Motion ▶ jumps between motion
     events (Shift+←/→), ±10 s (←/→), space to pause.
-  - **Speed 1×–16×** to skim an hour in minutes (uses the low-quality stream when
-    fast, so the network keeps up).
+  - **Speed 1×–8× and Max** (as fast as the NVR can stream — about 9× on an
+    NVR4108 over a home network) to skim an hour in minutes.
   - Only the bytes you watch are streamed — H.264 is demuxed from Dahua's
     `.dav`/DHAV container and decoded with the browser's built-in **WebCodecs**.
   - **Download** the raw `.dav` files (open in VLC or Dahua Smart Player).
