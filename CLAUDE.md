@@ -50,8 +50,12 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   SOI `FFD8` … EOI `FFD9`.
 - **Snapshots**: `/cgi-bin/snapshot.cgi?channel=N` is full-res but **rate-limited** —
   parallel requests fail. Load thumbnails **sequentially** with a small gap.
-- **`mediaFileFind.cgi`**: the `condition.Channel` is **0-based** even though the
-  UI/channels are 1-based. Off-by-one here = "no recordings". `findFile` answers
+- **Channel numbers are 1-based** in `mediaFileFind.cgi` (`condition.Channel`) and
+  `loadfile.cgi` (`channel`), like the UI — proven on NVR4108 fw 3.215 via the
+  file paths (`Channel=5` → folder `004`). `0` silently aliases channel 1, which
+  is why an old "0-based" note looked right when only camera 1 was checked; with
+  it, camera N showed camera N−1's recordings and cameras after a disconnected
+  one got HTTP 400. (Config arrays like `Encode[i]`, `RecordMode[i]` *are* 0-based.) `findFile` answers
   **HTTP 400 when nothing matches** (NVR4108 fw 3.215) — `findRecordings` treats
   that as an empty list. The calendar searches in 7-day chunks.
 - **Motion events** come from the recording index, not a separate event log:
