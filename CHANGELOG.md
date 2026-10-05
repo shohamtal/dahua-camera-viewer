@@ -18,7 +18,7 @@ update — keep `whats-new.html` in step with the newest feature release.
 - A search that finds nothing (HTTP 400 on some firmware) no longer shows as an error.
 
 ### Added
-- **Recordings, rebuilt:** a calendar marking the days with video; one 24-hour
+- **Recordings:** a calendar marking the days with video; one 24-hour
   timeline per day with recorded spans and motion marks; click/drag to play from
   any moment; zoom 24h / 1h / 10m; keyboard shortcuts.
 - **Fast playback:** 2×, 4×, 8× and Max (as fast as the NVR streams).

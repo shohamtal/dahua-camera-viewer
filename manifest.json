@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Dahua Camera Viewer – Live, Playback, MP4 Export & NVR Admin",
+  "name": "Dahua Camera Viewer – Live, Playback & NVR Admin",
   "version": "1.2.0",
-  "description": "View Dahua NVR/DVR cameras in Chrome without the web plugin: live view, 24h playback timeline, MP4 export, motion events, admin.",
+  "description": "Watch Dahua NVR, DVR and IP cameras in Chrome without the old web plugin: live view, recordings, MP4 export, motion events, admin.",
   "permissions": [
     "storage"
   ],
