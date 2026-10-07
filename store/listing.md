@@ -40,7 +40,7 @@ WHAT IT DOES
 • Report a problem: you see the whole report before sending it, with addresses, serial numbers and names removed.
 • Dark and light theme.
 
-Works with Dahua NVRs, DVRs and IP cameras that support the Dahua HTTP API and record in H.264.
+Works with Dahua NVRs, DVRs and IP cameras that support the Dahua HTTP API and record in H.264. For live view, set the cameras' sub stream to MJPEG (the extension tells you if it isn't).
 
 PRIVACY
 Your login and your video only go between your computer and your NVR. No account, no cloud, no tracking, no ads.
