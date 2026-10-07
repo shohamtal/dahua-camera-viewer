@@ -4,6 +4,16 @@ All notable changes to Dahua Camera Viewer. Versions follow `manifest.json`;
 a feature release (x.**y**) opens the bundled "What's new" page once after the
 update — keep `whats-new.html` in step with the newest feature release.
 
+## 1.2.1 — 2026-10-07
+
+### Fixed
+- Live view stuck on "Connecting…" when a camera's sub stream is H.264 (Dahua's
+  default). Live view needs the sub stream in MJPEG; the Live tab now says which
+  cameras aren't, links admins to Admin › Streams, and gives up after 10 s
+  without a frame instead of waiting forever.
+- Those silent streams also held connections open, which slowed down the
+  snapshot thumbnails.
+
 ## 1.2.0 — 2026-10-05
 
 ### Fixed
