@@ -21,6 +21,8 @@ export function initAdmin(c, cams) {
 }
 
 export function showAdmin() { openSection(current); }
+/** Pick the section the Admin tab opens on next (e.g. 'streams' from the live grid). */
+export function setAdminSection(name) { current = name; }
 
 function openSection(name) {
   current = name;
