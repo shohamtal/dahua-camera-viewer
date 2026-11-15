@@ -31,9 +31,9 @@ const isHttps = (d) => d.scheme === 'https' || (!d.scheme && String(d.port) === 
  * isn't a plain host name / IPv4 address. Accepts a pasted "http://host:port/…".
  */
 function parseAddress(text) {
-  const m = text.trim().match(/^(?:(https?):\/\/)?([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::(\d{1,5}))?(?:\/.*)?$/i);
+  const m = text.trim().match(/^(?:(https?):\/\/)?([a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)(?::(\d{1,5}))?(?:\/.*)?$/i);
   if (!m) return null;
-  return { host: m[2].toLowerCase(), port: m[3] ? +m[3] : null, https: m[1] ? m[1].toLowerCase() === 'https' : null };
+  return { host: m[2], port: m[3] ? +m[3] : null, https: m[1] ? m[1].toLowerCase() === 'https' : null };
 }
 
 async function loadDevices() {
@@ -139,6 +139,11 @@ loginForm.addEventListener('submit', (e) => {
   const typed = parseInt(f.port, 10);
   const port = addr.port || (typed && !(https && typed === 80) ? typed : https ? 443 : 80);
   const { host } = addr;
+  if (!(port >= 1 && port <= 65535)) {
+    const msg = $('login-msg'); msg.className = 'msg error';
+    msg.textContent = 'The port must be between 1 and 65535.';
+    return;
+  }
   connectTo({ id: devId({ host, port }), name: f.name.trim(), host, port, scheme: https ? 'https' : 'http', user: f.user, pass: f.pass }, !!f.remember);
 });
 // Ticking HTTPS moves the port between the two defaults.
@@ -290,20 +295,23 @@ const NO_LIVE_TEXT = 'No live video (sub stream not MJPEG?)';
 /**
  * A live stream that stays up: reconnects when the NVR ends it or it stalls.
  * Resolves when `signal` aborts. Rejects with code 'NO_LIVE' when no frame ever
- * came, or 'LIVE_LOST' after 3 reconnects in a row without a frame.
+ * came, or 'LIVE_LOST' after LIVE_GIVE_UP_MS without one (long enough for an NVR
+ * to restart or the Wi-Fi to come back; a count of tries would be over in seconds
+ * when the network is down, because those requests fail at once).
  */
+const LIVE_GIVE_UP_MS = 120e3;
 async function keepLive(channel, onFrame, signal) {
-  let ever = false, fails = 0;
+  let ever = false, lastFrame = 0, wait = 1500;
   while (!signal.aborted) {
-    let got = false;
-    try { await streamLive(channel, (b) => { got = ever = true; fails = 0; onFrame(b); }, signal); }
+    try { await streamLive(channel, (b) => { ever = true; lastFrame = Date.now(); wait = 1500; onFrame(b); }, signal); }
     catch (e) {
       if (signal.aborted) return;
       if (!ever) throw e;
-      if (!got && ++fails >= 3) throw Object.assign(new Error('Live video stopped'), { code: 'LIVE_LOST' });
+      if (Date.now() - lastFrame > LIVE_GIVE_UP_MS) throw Object.assign(new Error('Live video stopped'), { code: 'LIVE_LOST' });
     }
     if (signal.aborted) return;
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, wait));
+    wait = Math.min(wait * 2, 10000);
   }
 }
 
@@ -441,14 +449,22 @@ const HIDDEN_STOP_MS = 60e3;
 let hiddenTimer = null;
 document.addEventListener('visibilitychange', () => {
   clearTimeout(hiddenTimer);
-  if (document.hidden) hiddenTimer = setTimeout(() => liveItems.forEach((it) => it.pause()), HIDDEN_STOP_MS);
-  else liveItems.forEach((it) => it.resume());
+  if (document.hidden) hiddenTimer = setTimeout(() => {
+    liveItems.forEach((it) => it.pause());
+    if (fsCam) { fsPaused = fsCam; closeFullscreen(); }
+  }, HIDDEN_STOP_MS);
+  else {
+    liveItems.forEach((it) => it.resume());
+    if (fsPaused) { const cam = fsPaused; fsPaused = null; openFullscreen(cam); }
+  }
 });
 
 // ---- fullscreen single camera -------------------------------------------
 let fsAbort = null, fsLastUrl = null;
+let fsCam = null, fsPaused = null; // open now / closed because the tab was hidden
 function openFullscreen(cam) {
   closeFullscreen();
+  fsCam = cam;
   const modal = $('modal'), img = $('modal-img'), status = $('modal-status');
   $('modal-title').textContent = `${cam.name} · ch ${cam.channel}`;
   img.removeAttribute('src'); status.style.display = 'grid'; status.textContent = 'Connecting…';
@@ -472,6 +488,7 @@ function openFullscreen(cam) {
   });
 }
 function closeFullscreen() {
+  fsCam = null;
   if (fsAbort) { fsAbort.abort(); fsAbort = null; }
   if (fsLastUrl) { URL.revokeObjectURL(fsLastUrl); fsLastUrl = null; }
   $('modal').classList.add('hidden');

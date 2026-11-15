@@ -92,20 +92,21 @@ function renderOverview(root) {
   return load(root, async () => {
     const [dev, exp, active, users] = await Promise.all([
       admin.deviceDetails(conn), admin.exposure(conn),
-      admin.getActiveUsers(conn).catch(() => []), admin.getUsers(conn).catch(() => null),
+      admin.getActiveUsers(conn).catch(() => null), admin.getUsers(conn).catch(() => null),
     ]);
+    const sessions = active || [];
     const msg = el('p', { className: 'msg' });
     const reload = () => renderOverview(root);
 
     const flags = [];
     // Anything that couldn't be read is said so: a failed read must not look like "all fine".
     const unknown = [dev.vulnerable == null && 'the firmware build date', !exp.upnp.known && 'the UPnP setting',
-      !exp.p2p.known && 'the P2P setting', !users && 'the user list'].filter(Boolean);
+      !exp.p2p.known && 'the P2P setting', !users && 'the user list', !active && 'who is logged in'].filter(Boolean);
     if (dev.vulnerable) flags.push(flag('bad', `Firmware build ${dev.buildDate} predates the September 2021 fix for an actively exploited login bypass (CVE-2021-33044/33045). Update it from Dahua's download center for your exact model — until then, deleted rogue accounts can come back.`));
     if (exp.upnp.enabled) flags.push(flag('bad', `UPnP is on${exp.upnp.maps.length ? `, forwarding ${exp.upnp.maps.map((m) => `${m.proto} ${m.outer}`).join(', ')}` : ''}: the NVR can open ports on your router to the internet.`));
     const admins = (users || []).filter((u) => u.group === 'admin' && !u.reserved);
     if (admins.length) flags.push(flag('warn', `${admins.length} extra admin-group account(s): ${admins.map((u) => u.name).join(', ')}. Delete any you don't recognise (see Users).`));
-    const outside = active.filter((a) => admin.isOutsideIp(a.from));
+    const outside = sessions.filter((a) => admin.isOutsideIp(a.from));
     if (outside.length) flags.push(flag('warn', `Logged in right now from outside your network: ${outside.map((a) => `${a.name} @ ${a.from}`).join(', ')}.`));
     if (exp.p2p.enabled) flags.push(flag('info', 'P2P cloud is on (the DMSS app uses it for remote viewing). Turn it off if nobody needs that.'));
     if (unknown.length) flags.push(flag('warn', `Couldn't read ${unknown.join(', ')} from the NVR, so ${unknown.length > 1 ? 'those are' : 'that is'} not checked. Try Re-check.`));
@@ -145,10 +146,10 @@ function renderOverview(root) {
           ['P2P server', exp.p2p.enabled ? exp.p2p.server : ''],
           ['Ports', ports],
         ]))),
-      card(`Logged in now (${active.length})`, active.length
-        ? table(['User', 'Group', 'From', 'Via', 'Since'], active.map((a) => el('tr', { className: admin.isOutsideIp(a.from) ? 'row-warn' : '' },
+      card(active ? `Logged in now (${sessions.length})` : 'Logged in now', sessions.length
+        ? table(['User', 'Group', 'From', 'Via', 'Since'], sessions.map((a) => el('tr', { className: admin.isOutsideIp(a.from) ? 'row-warn' : '' },
           ...[a.name, a.group, a.from + (a.from?.startsWith('127.') ? ' (P2P relay)' : ''), a.via, a.since].map((t) => el('td', { textContent: t || '' })))))
-        : el('p', { className: 'muted', textContent: 'Nobody (or this account can\'t see sessions).' })),
+        : el('p', { className: 'muted', textContent: active ? 'Nobody.' : 'Couldn\'t read the sessions from the NVR.' })),
       el('button', { textContent: 'Re-check', onclick: reload }),
     ];
   });

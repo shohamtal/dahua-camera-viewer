@@ -77,9 +77,11 @@ export function showRecordings() {
 async function refreshDays() {
   const channel = S.channel, cached = S.daysByChannel.get(channel);
   if (channel == null || !cached || Date.now() - cached.at < DAYS_STALE_MS) return;
-  cached.at = Date.now(); // one refresh at a time
+  if (cached.refreshing) return; // one refresh at a time
+  cached.refreshing = true;
   let days;
-  try { days = await availableDays(channel); } catch (e) { console.warn('list recordings failed:', e.message); return; }
+  try { days = await availableDays(channel); } catch (e) { console.warn('list recordings failed:', e.message); return; } // stays stale: tried again next time
+  finally { cached.refreshing = false; }
   S.daysByChannel.set(channel, { days, at: Date.now() });
   if (S.channel !== channel) return;
   S.days = days;
@@ -167,7 +169,10 @@ async function availableDays(channel) {
   return days;
 }
 
-async function loadDay(day, { keepPicture = false } = {}) {
+// `reload` (today reached its end while playing): keep the picture, the zoom
+// window and the file list, and carry on from `then` if this view is still shown.
+async function loadDay(day, { reload = false, then = null } = {}) {
+  const keepPicture = reload;
   stopPlayer(); setPlaying(false); if (!keepPicture) clearPicture();
   S.day = day; S.pos = null; S.seg = null;
   const token = ++S.token;
@@ -193,10 +198,12 @@ async function loadDay(day, { keepPicture = false } = {}) {
     ? `${Math.round(covered / 36e5 * 10) / 10} h recorded · ${S.motion.length} motion event(s)` + (S.motion.length ? '' : ' (is motion detection on?)')
     : 'No recordings on this day');
   overlay(S.segs.length ? 'Click the timeline to play' : 'No recordings on this day');
-  renderFiles();
-  S.winStart = dayStart(day);
+  // A reload leaves the list alone while a download shows its progress there.
+  if (!(reload && activeDownloads)) renderFiles();
+  if (!reload) S.winStart = dayStart(day);
   renderTimeline();
   if (S.pendingSeek != null) { const t = S.pendingSeek; S.pendingSeek = null; seek(t); }
+  else if (then != null && !$('view-recordings').classList.contains('hidden')) seek(then);
 }
 
 function clearDay() {
@@ -330,7 +337,7 @@ function seek(ms, { auto = false, noSd = false } = {}) {
       const after = S.segs[S.segs.indexOf(seg) + 1];
       if (after) seek(after.start, { auto: true });
       // Today is still being recorded: re-read the day and carry on if there is more.
-      else if (S.day === localDate(new Date()) && Date.now() - S.loadedAt > RELOAD_MIN_MS) { S.pendingSeek = seg.end; loadDay(S.day, { keepPicture: true }); }
+      else if (S.day === localDate(new Date()) && Date.now() - S.loadedAt > RELOAD_MIN_MS) loadDay(S.day, { reload: true, then: seg.end });
       else { stopPlayer(); setPlaying(false); overlay('End of recordings for this day'); }
     },
   });
@@ -664,12 +671,14 @@ function renderFiles() {
 }
 
 /** Save a recording window as .dav (streams to disk where the browser allows). */
+let activeDownloads = 0;
 export async function downloadClip(rec, channel, btn, prog) {
   const name = `ch${channel}_${rec.startTime.replace(/[-: ]/g, '')}.dav`;
   const ctrl = new AbortController();
   const reset = () => { btn.disabled = false; btn.textContent = 'Download'; };
   btn.disabled = true; btn.textContent = 'Downloading…'; prog.textContent = '';
   let w = null;
+  activeDownloads++;
   try {
     // Ask where to save first, while the click still counts as a user gesture
     // (a slow NVR would let it expire). Streams straight to disk: no memory
@@ -705,6 +714,6 @@ export async function downloadClip(rec, channel, btn, prog) {
     if (w) await w.abort().catch(() => {}); // and drop the partial file
     prog.textContent = 'failed'; reset();
     console.error(e);
-  }
+  } finally { activeDownloads--; }
 }
 const pct = (done, total) => total ? Math.min(100, Math.round(done / total * 100)) + '%' : (done / 1e6).toFixed(0) + 'MB';
