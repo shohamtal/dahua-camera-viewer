@@ -13,13 +13,15 @@ let showView = () => {};
 
 const DAY = 86400e3;
 const AVAILABILITY_DAYS = 35;     // how far back the calendar looks for video
+const DAYS_STALE_MS = 10 * 60e3;  // re-check the days with video after this long
+const RELOAD_MIN_MS = 60e3;       // at the end of today's video: re-read the day at most this often
 const SD_FROM_SPEED = 4;          // switch to the sub stream at this speed
 const S = {
   channel: null, day: null,       // day: "YYYY-MM-DD"
   days: new Set(), daysByChannel: new Map(),
   files: [], spans: [], segs: [], motion: [], // spans (per file) / segs (merged) / motion: {start, end} epoch ms
   ctl: null, seg: null, pos: null, playing: false, emptyRuns: 0,
-  speed: 1, sdBroken: false,
+  speed: 1, sdBroken: false, sdFails: 0, loadedAt: 0,
   zoom: 86400, winStart: 0,
   pendingSeek: null, token: 0, calMonth: null,
   ex: { open: false, start: null, end: null, ctrl: null }, // MP4 export panel
@@ -34,6 +36,9 @@ const $ = (id) => document.getElementById(id);
 const two = (n) => String(n).padStart(2, '0');
 const localDate = (d) => `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
 const dayStart = (day) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d).getTime(); };
+// Start of the next calendar day: a day is 23 or 25 hours long when the clocks change.
+const dayEnd = (day) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d + 1).getTime(); };
+const fullDay = () => S.zoom >= 86400;
 const fmt = (ms) => { const d = new Date(ms); return `${localDate(d)} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`; };
 const hms = (ms) => fmt(ms).slice(11);
 const toMs = (s) => { const m = (s || '').match(/(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)/); return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : null; };
@@ -64,7 +69,22 @@ export function initRecordings(c, cams, opts = {}) {
 /** Recordings tab became visible. */
 export function showRecordings() {
   if (S.channel == null && S.pendingSeek == null && cameras.length) selectCamera(cameras[0].channel);
+  else refreshDays();
   checkClock();
+}
+
+/** The page may stay open for days: re-read which days have video when the list is old. */
+async function refreshDays() {
+  const channel = S.channel, cached = S.daysByChannel.get(channel);
+  if (channel == null || !cached || Date.now() - cached.at < DAYS_STALE_MS) return;
+  cached.at = Date.now(); // one refresh at a time
+  let days;
+  try { days = await availableDays(channel); } catch (e) { console.warn('list recordings failed:', e.message); return; }
+  S.daysByChannel.set(channel, { days, at: Date.now() });
+  if (S.channel !== channel) return;
+  S.days = days;
+  updateDayButtons();
+  if (!$('rec-cal').classList.contains('hidden')) renderCalendar();
 }
 
 /**
@@ -112,11 +132,12 @@ async function selectCamera(channel, preferDay) {
   S.channel = channel; // sdBroken stays: whether the sub stream is stored is per NVR
   const token = ++S.token;
   status('Checking which days have video…');
-  let days = S.daysByChannel.get(channel);
-  if (!days || (preferDay && !days.has(preferDay))) { // cached list may predate that day
+  const cached = S.daysByChannel.get(channel);
+  let days = cached?.days;
+  if (!days || Date.now() - cached.at > DAYS_STALE_MS || (preferDay && !days.has(preferDay))) { // cached list may predate that day
     try { days = await availableDays(channel); }
     catch (e) { console.warn('list recordings failed:', e.message); if (token === S.token) status('Could not list recordings: ' + e.message); return; }
-    S.daysByChannel.set(channel, days);
+    S.daysByChannel.set(channel, { days, at: Date.now() });
   }
   if (token !== S.token) return;
   S.days = days;
@@ -146,14 +167,14 @@ async function availableDays(channel) {
   return days;
 }
 
-async function loadDay(day) {
-  stopPlayer(); setPlaying(false); clearPicture();
+async function loadDay(day, { keepPicture = false } = {}) {
+  stopPlayer(); setPlaying(false); if (!keepPicture) clearPicture();
   S.day = day; S.pos = null; S.seg = null;
   const token = ++S.token;
   $('rec-day-label').textContent = new Date(dayStart(day)).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   updateDayButtons();
   status('Loading the day…');
-  const from = new Date(dayStart(day)), to = new Date(dayStart(day) + DAY - 1000);
+  const from = new Date(dayStart(day)), to = new Date(dayEnd(day) - 1000);
   let files, motion;
   try {
     [files, motion] = await Promise.all([
@@ -162,6 +183,7 @@ async function loadDay(day) {
     ]);
   } catch (e) { console.warn('load day failed:', e.message); if (token === S.token) status('Could not load recordings: ' + e.message); return; }
   if (token !== S.token) return;
+  S.loadedAt = Date.now();
   S.files = files.sort((a, b) => a.startTime.localeCompare(b.startTime));
   S.spans = files.map((f) => ({ start: Math.max(from.getTime(), toMs(f.startTime)), end: Math.min(to.getTime() + 1000, toMs(f.endTime)) })).filter((x) => x.end > x.start);
   S.segs = mergeSegments(files, from.getTime(), to.getTime() + 1000);
@@ -218,6 +240,7 @@ function toggleCalendar() {
   S.calMonth = new Date(ref.getFullYear(), ref.getMonth(), 1);
   renderCalendar();
   cal.classList.remove('hidden');
+  refreshDays();
 }
 
 function renderCalendar() {
@@ -270,11 +293,11 @@ function fileAt(ms) {
  * one recording file (the NVR stops at the end of the file a request started
  * in); when it ends, playback continues in the next file.
  */
-function seek(ms, { auto = false } = {}) {
+function seek(ms, { auto = false, noSd = false } = {}) {
   if (!S.segs.length) return;
   if (!auto) S.emptyRuns = 0;
   const d0 = dayStart(S.day);
-  ms = Math.max(d0, Math.min(ms, d0 + DAY - 1000));
+  ms = Math.max(d0, Math.min(ms, dayEnd(S.day) - 1000));
   const seg = S.segs.find((s) => ms < s.end);
   if (!seg) { stopPlayer(); setPlaying(false); S.pos = S.segs[S.segs.length - 1].end; updatePlayhead(); overlay('No recordings after this time'); return; }
   let note = '';
@@ -284,7 +307,7 @@ function seek(ms, { auto = false } = {}) {
   S.seg = seg; S.pos = ms;
   updatePlayhead();
   setPlaying(true);
-  const subtype = S.speed >= SD_FROM_SPEED && !S.sdBroken ? 1 : 0;
+  const subtype = S.speed >= SD_FROM_SPEED && !S.sdBroken && !noSd ? 1 : 0;
   $('pb-quality').textContent = subtype ? 'SD' : 'HD';
   $('pb-quality').title = subtype ? 'Low-quality stream while playing fast' : 'Full-quality stream';
   if (!auto) { overlay(''); spinner(true); }
@@ -296,7 +319,9 @@ function seek(ms, { auto = false } = {}) {
     onEnded: ({ frames }) => {
       if (S.ctl !== ctl) return;
       // The sub stream isn't stored on every NVR: fall back to the main stream.
-      if (subtype === 1 && !frames) { S.sdBroken = true; seek(S.pos, { auto: true }); return; }
+      // Twice in a row = not stored; once can be a hiccup, so only this request falls back.
+      if (subtype === 1 && !frames) { if (++S.sdFails >= 2) S.sdBroken = true; seek(S.pos, { auto: true, noSd: true }); return; }
+      if (subtype === 1) S.sdFails = 0;
       S.emptyRuns = frames ? 0 : S.emptyRuns + 1;
       if (S.emptyRuns >= 3) { console.warn(`no video from the NVR around ${fmt(ms)}`); stopPlayer(); setPlaying(false); overlay(`The NVR sent no video around ${hms(ms)}`); return; }
       // Stream stopped early inside the file → pick up where it stopped; else the next file.
@@ -304,6 +329,8 @@ function seek(ms, { auto = false } = {}) {
       if (next < seg.end - 500) { seek(next, { auto: true }); return; }
       const after = S.segs[S.segs.indexOf(seg) + 1];
       if (after) seek(after.start, { auto: true });
+      // Today is still being recorded: re-read the day and carry on if there is more.
+      else if (S.day === localDate(new Date()) && Date.now() - S.loadedAt > RELOAD_MIN_MS) { S.pendingSeek = seg.end; loadDay(S.day, { keepPicture: true }); }
       else { stopPlayer(); setPlaying(false); overlay('End of recordings for this day'); }
     },
   });
@@ -327,7 +354,7 @@ function setSpeed(v) {
 /** Jump to the next (dir=1) or previous (dir=-1) motion event. */
 function jumpMotion(dir) {
   if (!S.motion.length) { status('No motion events on this day'); return; }
-  const pos = S.pos ?? (dir > 0 ? dayStart(S.day) - 1 : dayStart(S.day) + DAY);
+  const pos = S.pos ?? (dir > 0 ? dayStart(S.day) - 1 : dayEnd(S.day));
   const target = dir > 0
     ? S.motion.find((m) => m.start > pos + 1000)
     : [...S.motion].reverse().find((m) => m.start < pos - 3000); // -3 s: pressing again keeps going back
@@ -352,16 +379,16 @@ function clearPicture() { const c = $('rec-canvas'); c.getContext('2d').clearRec
 // ---------- timeline ----------
 
 function windowRange() {
-  const d0 = dayStart(S.day || localDate(new Date())), span = S.zoom * 1000;
-  if (span >= DAY) return [d0, d0 + DAY];
-  S.winStart = Math.max(d0, Math.min(S.winStart, d0 + DAY - span));
+  const day = S.day || localDate(new Date()), d0 = dayStart(day), d1 = dayEnd(day), span = S.zoom * 1000;
+  if (fullDay()) return [d0, d1];
+  S.winStart = Math.max(d0, Math.min(S.winStart, d1 - span));
   return [S.winStart, S.winStart + span];
 }
 
 function setZoom(z) {
   S.zoom = z;
   const span = z * 1000;
-  const center = S.pos ?? (S.segs.length ? S.segs[S.segs.length - 1].end : dayStart(S.day) + DAY / 2);
+  const center = S.pos ?? (S.segs.length ? S.segs[S.segs.length - 1].end : (dayStart(S.day) + dayEnd(S.day)) / 2);
   S.winStart = center - span / 2;
   document.querySelectorAll('#tl-zoom button').forEach((b) => b.classList.toggle('active', +b.dataset.zoom === z));
   renderTimeline();
@@ -376,8 +403,12 @@ function renderTimeline() {
   const kids = [];
   for (const s of S.segs) if (s.end > ws && s.start < we) kids.push(el('div', { className: 'tl-seg', style: `left:${x(Math.max(s.start, ws))};width:${w(s.start, s.end)}` }));
   for (const m of S.motion) if (m.end > ws && m.start < we) kids.push(el('div', { className: 'tl-mot', style: `left:${x(Math.max(m.start, ws))};width:${w(m.start, m.end)}`, title: `Motion ${hms(m.start)}` }));
-  const step = span >= DAY ? 3 * 3600e3 : span >= 3600e3 ? 600e3 : 60e3;
-  for (let t = Math.ceil(ws / step) * step; t <= we; t += step) {
+  const step = span >= 3600e3 ? 600e3 : 60e3;
+  // Whole day: a label every 3 hours of local time (right on clock-change days and in any time zone).
+  const [y, mo, dd] = S.day.split('-').map(Number);
+  const ticks = fullDay() ? [0, 3, 6, 9, 12, 15, 18, 21, 24].map((h) => new Date(y, mo - 1, dd, h).getTime()) : [];
+  if (!fullDay()) for (let t = Math.ceil(ws / step) * step; t <= we; t += step) ticks.push(t);
+  for (const t of ticks) {
     const d = new Date(t);
     const label = `${two(d.getHours())}:${two(d.getMinutes())}`;
     kids.push(el('div', { className: 'tl-tick', style: `left:${x(t)}` }, el('span', { textContent: label })));
@@ -385,7 +416,7 @@ function renderTimeline() {
   if (S.ex.open && S.ex.end > S.ex.start && S.ex.end > ws && S.ex.start < we) kids.push(el('div', { className: 'tl-sel', style: `left:${x(Math.max(S.ex.start, ws))};width:${w(S.ex.start, S.ex.end)}`, title: 'Export range' }));
   kids.push(el('div', { id: 'tl-head', className: 'tl-head' }), el('div', { id: 'tl-hover', className: 'tl-hover' }));
   bar.replaceChildren(...kids);
-  $('tl-range').textContent = span >= DAY ? '' : `${hms(ws).slice(0, 5)} – ${hms(we).slice(0, 5)}`;
+  $('tl-range').textContent = fullDay() ? '' : `${hms(ws).slice(0, 5)} – ${hms(we).slice(0, 5)}`;
   updatePlayhead(true);
 }
 
@@ -396,7 +427,7 @@ function updatePlayhead(fromRender) {
   if (S.pos == null) { head.style.display = 'none'; return; }
   const [ws, we] = windowRange();
   // Zoomed in and the playhead left the window: follow it.
-  if (!fromRender && (S.pos < ws || S.pos > we) && we - ws < DAY) { S.winStart = S.pos - (we - ws) * 0.1; renderTimeline(); return; }
+  if (!fromRender && (S.pos < ws || S.pos > we) && !fullDay()) { S.winStart = S.pos - (we - ws) * 0.1; renderTimeline(); return; }
   head.style.display = S.pos >= ws && S.pos <= we ? 'block' : 'none';
   head.style.left = `${((S.pos - ws) / (we - ws)) * 100}%`;
 }
@@ -497,7 +528,7 @@ function validateExport() {
   else if (end <= start) info = 'The end must be after the start';
   else if (end - start > MAX_EXPORT_MS) info = `Up to ${MAX_EXPORT_MS / 60e3} minutes per export (this is ${mmss(end - start)})`;
   else {
-    const d0 = dayStart(S.day), d1 = d0 + DAY;
+    const d0 = dayStart(S.day), d1 = dayEnd(S.day);
     const covered = S.segs.reduce((n, s) => n + Math.max(0, Math.min(s.end, end) - Math.max(s.start, start)), 0);
     const outside = Math.max(0, d0 - start) + Math.max(0, end - d1); // other days: checked when exporting
     if (!covered && !outside) info = 'No recording in this range';
@@ -562,8 +593,10 @@ async function runExport() {
   if (window.showSaveFilePicker) {
     let handle;
     try { handle = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: 'MP4 video', accept: { 'video/mp4': ['.mp4'] } }] }); }
-    catch (e) { if (e.name === 'AbortError') return; throw e; }
-    const w = await handle.createWritable();
+    catch (e) { if (e.name !== 'AbortError') { console.warn('save dialog failed:', e.message); msg.textContent = 'Could not open the save dialog: ' + e.message; msg.classList.add('error'); } return; }
+    let w;
+    try { w = await handle.createWritable(); }
+    catch (e) { console.warn('open file failed:', e.message); msg.textContent = 'Could not write to that file: ' + e.message; msg.classList.add('error'); return; }
     sink = {
       write: (d) => w.write(d),
       writeAt: (position, d) => w.write({ type: 'write', position, data: d }),
@@ -635,31 +668,41 @@ export async function downloadClip(rec, channel, btn, prog) {
   const name = `ch${channel}_${rec.startTime.replace(/[-: ]/g, '')}.dav`;
   const ctrl = new AbortController();
   const reset = () => { btn.disabled = false; btn.textContent = 'Download'; };
-  btn.disabled = true; btn.textContent = 'Downloading…'; prog.textContent = '0%';
+  btn.disabled = true; btn.textContent = 'Downloading…'; prog.textContent = '';
+  let w = null;
   try {
-    const res = await dahua.downloadClip(conn, channel, rec.startTime, rec.endTime, 0, ctrl.signal);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const total = +res.headers.get('content-length') || rec.length || 0;
-    const reader = res.body.getReader();
-    // Prefer streaming straight to disk (no memory blow-up on hour-long clips).
+    // Ask where to save first, while the click still counts as a user gesture
+    // (a slow NVR would let it expire). Streams straight to disk: no memory
+    // blow-up on hour-long clips.
     if (window.showSaveFilePicker) {
       let handle;
       try { handle = await window.showSaveFilePicker({ suggestedName: name }); }
-      catch (e) { if (e.name === 'AbortError') { ctrl.abort(); reset(); prog.textContent = ''; return; } throw e; }
-      const w = await handle.createWritable();
-      let done = 0;
-      for (;;) { const { value, done: d } = await reader.read(); if (d) break; await w.write(value); done += value.length; prog.textContent = pct(done, total); }
-      await w.close();
-    } else {
-      // Fallback: buffer then anchor-download.
-      const chunks = []; let done = 0;
-      for (;;) { const { value, done: d } = await reader.read(); if (d) break; chunks.push(value); done += value.length; prog.textContent = pct(done, total); }
+      catch (e) { if (e.name === 'AbortError') { reset(); return; } throw e; }
+      w = await handle.createWritable();
+    }
+    prog.textContent = '0%';
+    const res = await dahua.downloadClip(conn, channel, rec.startTime, rec.endTime, 0, ctrl.signal);
+    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+    const total = +res.headers.get('content-length') || rec.length || 0;
+    const reader = res.body.getReader();
+    const chunks = []; let done = 0;
+    for (;;) {
+      const { value, done: d } = await reader.read();
+      if (d) break;
+      if (w) await w.write(value); else chunks.push(value);
+      done += value.length; prog.textContent = pct(done, total);
+    }
+    if (w) await w.close();
+    else {
+      // Fallback: buffered, then an anchor download.
       const url = URL.createObjectURL(new Blob(chunks));
       el('a', { href: url, download: name }).click();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
     }
     prog.textContent = 'saved'; reset();
   } catch (e) {
+    ctrl.abort();                          // free the connection to the NVR
+    if (w) await w.abort().catch(() => {}); // and drop the partial file
     prog.textContent = 'failed'; reset();
     console.error(e);
   }
