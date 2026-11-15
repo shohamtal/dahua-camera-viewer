@@ -48,7 +48,13 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   (`/cgi-bin/mjpg/video.cgi?channel=N&subtype=1`). The main stream is H.264-only
   and not usable as HTTP MJPEG. So live view is capped at substream resolution
   (typically D1). Parse the `multipart/x-mixed-replace` body by scanning for JPEG
-  SOI `FFD8` … EOI `FFD9`.
+  SOI `FFD8` … EOI `FFD9`. It only works when the sub stream's **codec is MJPG**
+  (`Encode[ch-1].ExtraFormat[0].Video.Compression`); with Dahua's default H.264 no
+  frame ever arrives. `app.js` reads the codecs on connect (`streamInfo`; limited
+  accounts may not be allowed), warns on the Live tab, skips the first-frame grab
+  for non-MJPEG channels (hung requests use up Chrome's 6 connections per host and
+  stall snapshots) and times out after 10 s without a frame. Disconnected cameras
+  (no snapshot, or no `Encode` entry) are left out of the warning.
 - **Snapshots**: `/cgi-bin/snapshot.cgi?channel=N` is full-res but **rate-limited** —
   parallel requests fail. Load thumbnails **sequentially** with a small gap.
 - **Channel numbers are 1-based** in `mediaFileFind.cgi` (`condition.Channel`) and

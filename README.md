@@ -175,6 +175,11 @@ Dahua-OEM devices that expose the standard HTTP-CGI API (most do). Live view is
 limited to whatever the substream provides (typically D1); recordings play at full
 resolution.
 
+**Live view needs each camera's sub stream set to MJPEG.** Dahua's default is H.264,
+which the NVR can't send over HTTP: you get snapshots but no live video. Change it in
+**Admin › Streams** (Codec → MJPG) or in the NVR's own settings under
+*Camera › Encode › Sub Stream*. Recordings aren't affected.
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md). After a feature update the extension opens a short

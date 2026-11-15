@@ -1,9 +1,9 @@
 // First: starts capturing errors before anything else runs.
 import { initFeedback, setFeedbackContext, noteSuccessfulUse } from './feedback.js';
 import * as dahua from './lib/dahua.js';
-import { initAdmin, showAdmin } from './admin-ui.js';
+import { initAdmin, showAdmin, setAdminSection } from './admin-ui.js';
 import { initRecordings, showRecordings, hideRecordings, goToRecording, downloadClip } from './recordings-ui.js';
-import { isAdminAccount } from './lib/admin.js';
+import { isAdminAccount, streamInfo } from './lib/admin.js';
 
 // ---- saved NVRs (extension storage, localStorage fallback) ---------------
 // `devices` is a list of {id, name, host, port, user, pass?, device}; `lastId`
@@ -154,8 +154,11 @@ async function enterApp() {
     el('option', { value: '__add', textContent: '+ Add NVR…' }));
   // The Admin tab is only for admin-group accounts. The NVR refuses changes from
   // limited accounts anyway, but they'd see errors and a falsely clean Security page.
-  let isAdmin;
-  [cameras, isAdmin] = await Promise.all([dahua.listChannels(conn), isAdminAccount(conn).catch(() => false)]);
+  let isAdmin, streams;
+  [cameras, isAdmin, streams] = await Promise.all([dahua.listChannels(conn), isAdminAccount(conn).catch(() => false),
+    streamInfo(conn).catch(() => [])]); // limited accounts may not be allowed to read it
+  subCodec = Object.fromEntries(streams.map((s) => [s.channel, s.compression]));
+  canFixStreams = isAdmin;
   document.querySelector('.seg-btn[data-view=admin]').classList.toggle('hidden', !isAdmin);
   $('ev-date').value = localDate(new Date());
   initRecordings(conn, cameras, { showView });
@@ -199,6 +202,59 @@ document.querySelectorAll('.seg-btn').forEach((b) => b.addEventListener('click',
 let liveItems = [];
 let thumbToken = 0;
 
+// Live video is the sub stream as MJPEG (mjpg/video.cgi). Dahua's default sub-stream
+// codec is H.264, which that call can't serve: the request stays open and no frame
+// ever arrives. So: say so up front when the codec is readable, and give up after
+// LIVE_TIMEOUT_MS without a frame instead of showing "Connecting…" forever.
+const LIVE_TIMEOUT_MS = 10000;
+let subCodec = {};          // channel -> sub-stream codec, when the account may read it
+let canFixStreams = false;  // admin account: offer Admin › Streams
+const isMjpeg = (codec) => !codec || /^M?JPE?G$/i.test(codec);
+
+function showLiveWarning(channels) {
+  const box = $('live-warn');
+  if (!channels.length) { box.classList.add('hidden'); return; }
+  const list = (chs) => `Camera${chs.length > 1 ? 's' : ''} ${chs.join(', ')}`;
+  const bad = channels.filter((ch) => !isMjpeg(subCodec[ch])), silent = channels.filter((ch) => isMjpeg(subCodec[ch]));
+  const why = [
+    bad.length && `${list(bad)} ${bad.length > 1 ? 'have' : 'has'} the sub stream set to ${[...new Set(bad.map((ch) => subCodec[ch]))].join('/')}.`,
+    silent.length && `${list(silent)} sent no live video.`,
+  ].filter(Boolean).join(' ');
+  box.replaceChildren(
+    el('strong', { textContent: 'Live view needs the sub stream in MJPEG. ' }), why + ' ',
+    canFixStreams
+      ? el('button', { className: 'link-btn', textContent: 'Change it in Admin › Streams', onclick: () => { setAdminSection('streams'); showView('admin'); } })
+      : 'Ask the NVR admin to change it (Camera › Encode › Sub Stream)',
+    '. Recordings and snapshots work either way.');
+  box.classList.remove('hidden');
+}
+const liveFailed = new Set();
+// Only cameras that are online (they have a snapshot, and a sub stream when the
+// config is readable): a disconnected camera sends no video for its own reason.
+function noteLiveFailed(channel, hasPicture) {
+  if (!hasPicture || (Object.keys(subCodec).length && !(channel in subCodec))) return;
+  liveFailed.add(channel); showLiveWarning([...new Set([...badCodecChannels(), ...liveFailed])].sort((a, b) => a - b)); }
+const badCodecChannels = () => cameras.map((c) => c.channel).filter((ch) => !isMjpeg(subCodec[ch]));
+
+/** streamMjpeg that gives up when no frame arrives in time (rejects with code 'NO_LIVE'). */
+function streamLive(channel, onFrame, signal) {
+  const ctrl = new AbortController();
+  const stop = () => ctrl.abort();
+  signal.addEventListener('abort', stop);
+  let got = false;
+  let timedOut = false;
+  const timer = setTimeout(() => { if (!got) { timedOut = true; ctrl.abort(); } }, LIVE_TIMEOUT_MS);
+  const fail = (e) => {
+    if (signal.aborted || /^stream HTTP/.test(e?.message)) throw e; // a real error, not a silent stream
+    console.warn(`Live ch ${channel}: no video${subCodec[channel] ? ` (sub stream ${subCodec[channel]})` : ''}:`, timedOut ? `no frame in ${LIVE_TIMEOUT_MS / 1000} s` : e?.message || 'stream ended');
+    throw Object.assign(new Error('No live video'), { code: 'NO_LIVE' });
+  };
+  return dahua.streamMjpeg(conn, channel, 1, (b) => { got = true; clearTimeout(timer); onFrame(b); }, ctrl.signal)
+    .then(() => { if (!got) fail(); }, (e) => { if (!got) fail(e); else if (!signal.aborted) throw e; })
+    .finally(() => { clearTimeout(timer); signal.removeEventListener('abort', stop); });
+}
+const NO_LIVE_TEXT = 'No live video (sub stream not MJPEG?)';
+
 function stopLive() {
   thumbToken++; // cancel the running loop
   liveItems.forEach((it) => it.dispose());
@@ -208,6 +264,8 @@ function stopLive() {
 
 function startLive() {
   stopLive();
+  liveFailed.clear();
+  showLiveWarning(badCodecChannels());
   const grid = $('grid');
   for (const cam of cameras) grid.append(buildTile(cam));
   runThumbLoop(++thumbToken);
@@ -228,10 +286,14 @@ function buildTile(cam) {
     if (isLive) return;
     isLive = true; liveBtn.textContent = '⏹'; liveBtn.title = 'Stop live'; status.style.display = 'none';
     liveAbort = new AbortController();
-    dahua.streamMjpeg(conn, cam.channel, 1, (blob) => {
+    streamLive(cam.channel, (blob) => {
       const url = URL.createObjectURL(blob); const probe = new Image();
       probe.onload = () => swap(url); probe.onerror = () => URL.revokeObjectURL(url); probe.src = url;
-    }, liveAbort.signal).catch((e) => { if (e.name !== 'AbortError' && !img.src) { status.style.display = 'grid'; status.textContent = 'No signal'; } });
+    }, liveAbort.signal).catch((e) => {
+      if (e.name === 'AbortError') return;
+      if (e.code === 'NO_LIVE') { noteLiveFailed(cam.channel, !!img.src); stopInline(); if (!img.src) { status.style.display = 'grid'; status.textContent = NO_LIVE_TEXT; } } // the banner explains
+      else if (!img.src) { status.style.display = 'grid'; status.textContent = 'No signal'; }
+    });
   }
   function stopInline() {
     if (!isLive) return;
@@ -244,13 +306,15 @@ function buildTile(cam) {
 
   // Instant thumbnail: grab a single substream frame, then close. The slow,
   // sharp snapshot upgrade arrives via the sequential thumb loop.
+  // Skipped when the sub stream isn't MJPEG: those requests never answer, and
+  // Chrome allows only 6 connections per host, so they'd stall the snapshots too.
   const ffAbort = new AbortController();
   let gotFF = false;
-  dahua.streamMjpeg(conn, cam.channel, 1, (blob) => {
+  if (isMjpeg(subCodec[cam.channel])) streamLive(cam.channel, (blob) => {
     if (gotFF) return; gotFF = true;
     if (!isLive) swap(URL.createObjectURL(blob));
     ffAbort.abort();
-  }, ffAbort.signal).catch(() => {});
+  }, ffAbort.signal).catch((e) => { if (e.code === 'NO_LIVE') noteLiveFailed(cam.channel, !!img.src); }); // the snapshot loop fills the tile anyway
 
   liveItems.push({
     channel: cam.channel,
@@ -288,14 +352,19 @@ function openFullscreen(cam) {
   img.removeAttribute('src'); status.style.display = 'grid'; status.textContent = 'Connecting…';
   modal.classList.remove('hidden');
   fsAbort = new AbortController();
-  dahua.streamMjpeg(conn, cam.channel, 1, (blob) => {
+  streamLive(cam.channel, (blob) => {
     status.style.display = 'none';
     const url = URL.createObjectURL(blob);
     const probe = new Image();
     probe.onload = () => { img.src = url; if (fsLastUrl) URL.revokeObjectURL(fsLastUrl); fsLastUrl = url; };
     probe.onerror = () => URL.revokeObjectURL(url);
     probe.src = url;
-  }, fsAbort.signal).catch((e) => { if (e.name !== 'AbortError') { status.style.display = 'grid'; status.textContent = 'No signal'; } });
+  }, fsAbort.signal).catch((e) => {
+    if (e.name === 'AbortError') return;
+    status.style.display = 'grid';
+    status.textContent = e.code === 'NO_LIVE' ? NO_LIVE_TEXT : 'No signal';
+    if (e.code === 'NO_LIVE') noteLiveFailed(cam.channel, liveItems.find((it) => it.channel === cam.channel)?.hasImg());
+  });
 }
 function closeFullscreen() {
   if (fsAbort) { fsAbort.abort(); fsAbort = null; }
