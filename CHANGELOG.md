@@ -36,6 +36,7 @@ update — keep `whats-new.html` in step with the newest feature release.
 
 ### Added
 - "Use HTTPS" on the login form.
+- The version number is shown in the bottom corner.
 - A hidden tab stops loading thumbnails, and stops live video after a minute.
 
 ## 1.2.1 — 2026-10-07

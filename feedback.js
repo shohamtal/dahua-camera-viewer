@@ -102,6 +102,7 @@ export function buildReport(what = '', { maxLog = 60 } = {}) {
 // ---------- "Report a problem" dialog ----------
 
 export function initFeedback() {
+  $('app-version').textContent = `v${version()}`;
   document.querySelectorAll('[data-report]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); openReport(); }));
   $('report-close').addEventListener('click', closeReport);
   $('report-modal').addEventListener('click', (e) => { if (e.target.id === 'report-modal') closeReport(); });
