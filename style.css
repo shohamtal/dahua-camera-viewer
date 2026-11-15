@@ -246,6 +246,7 @@ label.check input { width: auto; margin: 0; }
 .report-body textarea { width: 100%; padding: 8px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font: inherit; }
 #report-text { font-family: ui-monospace, Menlo, monospace; font-size: .75rem; }
 .report-btn { padding: 6px 10px; }
+.app-version { position: fixed; right: 10px; bottom: 6px; z-index: 5; font-size: .72rem; color: var(--muted); opacity: .7; pointer-events: none; user-select: text; }
 .login-foot { margin: 14px 0 0; text-align: center; font-size: .8rem; }
 .login-foot a { color: var(--muted); }
 .rate-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 18px; background: color-mix(in srgb, var(--accent) 14%, var(--card)); border-bottom: 1px solid var(--border); font-size: .88rem; }

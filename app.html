@@ -22,9 +22,10 @@
       <label>IP address
         <input name="ip" placeholder="192.168.1.108" required />
       </label>
-      <label>HTTP port
+      <label>Port
         <input name="port" value="80" inputmode="numeric" />
       </label>
+      <label class="check" title="Only if HTTPS is turned on in the NVR. Chrome must trust its certificate."><input type="checkbox" name="https" /> Use HTTPS</label>
       <label>Username
         <input name="user" placeholder="admin" required autocomplete="username" />
       </label>
@@ -62,6 +63,7 @@
 
     <main id="view-live" class="view">
       <p id="live-warn" class="warn-line hidden" role="status"></p>
+      <p id="live-note" class="warn-line hidden" role="status"></p>
       <div id="grid" class="grid"></div>
     </main>
 
@@ -203,6 +205,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Version label, bottom corner of every screen (filled in by feedback.js) -->
+  <div id="app-version" class="app-version" title="Extension version"></div>
 
   <script type="module" src="app.js"></script>
 </body>

@@ -8,6 +8,7 @@ import { randomInt } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { writeFileSync } from 'node:fs';
 import * as dahua from '../lib/dahua.js';
+import { parseTable } from '../lib/admin.js'; // the hardened parser (device data is untrusted)
 
 const HELP = `
 Dahua NVR CLI    (env: NVR_HOST, NVR_USER [admin], NVR_PASS)
@@ -72,22 +73,6 @@ async function cgi(uri) {
   return body;
 }
 const enc = encodeURIComponent;
-
-// "a[0].B[1].C=v" lines -> nested objects/arrays.
-function parseTable(body) {
-  const root = {};
-  for (const line of body.split(/\r?\n/)) {
-    const i = line.indexOf('=');
-    if (i < 0) continue;
-    const path = line.slice(0, i).trim().replace(/\[(\d+)\]/g, '.$1').split('.');
-    let o = root;
-    path.forEach((k, j) => {
-      if (j === path.length - 1) o[k] = line.slice(i + 1).trim();
-      else o = o[k] ??= /^\d+$/.test(path[j + 1]) ? [] : {};
-    });
-  }
-  return root;
-}
 
 async function getUsers() {
   return (parseTable(await cgi('/cgi-bin/userManager.cgi?action=getUserInfoAll')).users || []).filter(Boolean);

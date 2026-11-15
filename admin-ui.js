@@ -92,19 +92,24 @@ function renderOverview(root) {
   return load(root, async () => {
     const [dev, exp, active, users] = await Promise.all([
       admin.deviceDetails(conn), admin.exposure(conn),
-      admin.getActiveUsers(conn).catch(() => []), admin.getUsers(conn).catch(() => null),
+      admin.getActiveUsers(conn).catch(() => null), admin.getUsers(conn).catch(() => null),
     ]);
+    const sessions = active || [];
     const msg = el('p', { className: 'msg' });
     const reload = () => renderOverview(root);
 
     const flags = [];
-    if (dev.vulnerable) flags.push(flag('bad', `Firmware build ${dev.buildDate} predates the 2021 fix for an actively exploited login bypass (CVE-2021-33044/33045). Update it from Dahua's download center for your exact model — until then, deleted rogue accounts can come back.`));
+    // Anything that couldn't be read is said so: a failed read must not look like "all fine".
+    const unknown = [dev.vulnerable == null && 'the firmware build date', !exp.upnp.known && 'the UPnP setting',
+      !exp.p2p.known && 'the P2P setting', !users && 'the user list', !active && 'who is logged in'].filter(Boolean);
+    if (dev.vulnerable) flags.push(flag('bad', `Firmware build ${dev.buildDate} predates the September 2021 fix for an actively exploited login bypass (CVE-2021-33044/33045). Update it from Dahua's download center for your exact model — until then, deleted rogue accounts can come back.`));
     if (exp.upnp.enabled) flags.push(flag('bad', `UPnP is on${exp.upnp.maps.length ? `, forwarding ${exp.upnp.maps.map((m) => `${m.proto} ${m.outer}`).join(', ')}` : ''}: the NVR can open ports on your router to the internet.`));
     const admins = (users || []).filter((u) => u.group === 'admin' && !u.reserved);
     if (admins.length) flags.push(flag('warn', `${admins.length} extra admin-group account(s): ${admins.map((u) => u.name).join(', ')}. Delete any you don't recognise (see Users).`));
-    const outside = active.filter((a) => a.from && !admin.isLocalIp(a.from));
+    const outside = sessions.filter((a) => admin.isOutsideIp(a.from));
     if (outside.length) flags.push(flag('warn', `Logged in right now from outside your network: ${outside.map((a) => `${a.name} @ ${a.from}`).join(', ')}.`));
     if (exp.p2p.enabled) flags.push(flag('info', 'P2P cloud is on (the DMSS app uses it for remote viewing). Turn it off if nobody needs that.'));
+    if (unknown.length) flags.push(flag('warn', `Couldn't read ${unknown.join(', ')} from the NVR, so ${unknown.length > 1 ? 'those are' : 'that is'} not checked. Try Re-check.`));
     if (!flags.length) flags.push(flag('good', 'No red flags found.'));
 
     const upnpBtn = el('button', { textContent: exp.upnp.enabled ? 'Turn UPnP off' : 'Turn UPnP on' });
@@ -131,20 +136,20 @@ function renderOverview(root) {
       el('div', { className: 'adm-cards' },
         card('Device', kv([
           ['Model', dev.type], ['Serial', dev.serial], ['Firmware', dev.version],
-          ['Build', dev.buildDate ? el('span', {}, dev.buildDate, ' ', dev.vulnerable ? badge('vulnerable', 'bad') : badge('ok', 'good')) : ''],
+          ['Build', dev.buildDate ? el('span', {}, dev.buildDate, ' ', dev.vulnerable ? badge('vulnerable', 'bad') : '') : ''],
           ['Hardware', dev.hardware], ['Processor', dev.processor],
         ])),
         card('Internet exposure', kv([
-          ['UPnP', el('span', {}, exp.upnp.enabled ? badge('on', 'bad') : badge('off', 'good'), ' ', upnpBtn)],
+          ['UPnP', exp.upnp.known ? el('span', {}, exp.upnp.enabled ? badge('on', 'bad') : badge('off', 'good'), ' ', upnpBtn) : badge('unknown', 'warn')],
           ['Forwards', exp.upnp.maps.map((m) => `${m.proto} ${m.outer}→${m.inner}${m.name ? ` (${m.name})` : ''}`).join(', ') || (exp.upnp.enabled ? 'none' : '')],
-          ['P2P cloud', el('span', {}, exp.p2p.enabled ? badge('on', 'warn') : badge('off', 'good'), ' ', p2pBtn)],
+          ['P2P cloud', exp.p2p.known ? el('span', {}, exp.p2p.enabled ? badge('on', 'warn') : badge('off', 'good'), ' ', p2pBtn) : badge('unknown', 'warn')],
           ['P2P server', exp.p2p.enabled ? exp.p2p.server : ''],
           ['Ports', ports],
         ]))),
-      card(`Logged in now (${active.length})`, active.length
-        ? table(['User', 'Group', 'From', 'Via', 'Since'], active.map((a) => el('tr', { className: a.from && !admin.isLocalIp(a.from) ? 'row-warn' : '' },
+      card(active ? `Logged in now (${sessions.length})` : 'Logged in now', sessions.length
+        ? table(['User', 'Group', 'From', 'Via', 'Since'], sessions.map((a) => el('tr', { className: admin.isOutsideIp(a.from) ? 'row-warn' : '' },
           ...[a.name, a.group, a.from + (a.from?.startsWith('127.') ? ' (P2P relay)' : ''), a.via, a.since].map((t) => el('td', { textContent: t || '' })))))
-        : el('p', { className: 'muted', textContent: 'Nobody (or this account can\'t see sessions).' })),
+        : el('p', { className: 'muted', textContent: active ? 'Nobody.' : 'Couldn\'t read the sessions from the NVR.' })),
       el('button', { textContent: 'Re-check', onclick: reload }),
     ];
   });
@@ -329,8 +334,7 @@ function renderLog(root) {
     catch (e) { status.textContent = ''; out.replaceChildren(el('p', { className: 'msg error', textContent: e.message })); }
   });
   csv.onclick = () => {
-    const cell = (s) => `"${String(s).replace(/"/g, '""')}"`;
-    const text = ['time,user,type,ip,detail', ...shown.map((e) => [e.time, e.user, e.type, e.ip, e.detail].map(cell).join(','))].join('\n');
+    const text = ['time,user,type,ip,detail', ...shown.map((e) => [e.time, e.user, e.type, e.ip, e.detail].map(admin.csvCell).join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
     el('a', { href: url, download: `nvr-log-${from.value.slice(0, 10)}.csv` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
@@ -360,6 +364,9 @@ function renderStreams(root) {
       const save = el('button', { textContent: 'Save', disabled: true });
       [codec, fps, rate].forEach((i) => i.addEventListener('input', () => { save.disabled = false; }));
       save.onclick = () => act(save, msg, async () => {
+        const f = +fps.value, r = +rate.value;
+        if (f !== s.fps && (!Number.isInteger(f) || f < 1 || f > 30)) throw new Error(`ch ${s.channel}: FPS must be 1–30`);
+        if (r !== s.bitrate && (!Number.isInteger(r) || r < 32 || r > 8192)) throw new Error(`ch ${s.channel}: bitrate must be 32–8192 kbps`);
         const changes = {};
         if (codec.value !== s.compression) changes[admin.subStreamKey(s.channel, 'Compression')] = codec.value;
         if (+fps.value !== s.fps) changes[admin.subStreamKey(s.channel, 'FPS')] = +fps.value;

@@ -55,6 +55,14 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   for non-MJPEG channels (hung requests use up Chrome's 6 connections per host and
   stall snapshots) and times out after 10 s without a frame. Disconnected cameras
   (no snapshot, or no `Encode` entry) are left out of the warning.
+- **Connections**: Chrome opens at most **6 per host** and each live stream holds
+  one. So: at most 4 live tiles (`MAX_LIVE_TILES`), first-frame grabs 3 at a time
+  (`ffQueue`), live streams reconnect (`keepLive`) and stop when the tab is hidden.
+- **Digest nonces can't be reused**: NVR4108 fw 3.215 answers 401 to a second
+  request with the same nonce (nc counting up), so every call is challenge + request.
+- **Failed logins lock the account** (~5). `deviceInfo` sends one request first and
+  throws code `AUTH` on 401; a saved NVR is marked `authFailed` and auto-reconnect
+  skips it until the user clicks Connect.
 - **Snapshots**: `/cgi-bin/snapshot.cgi?channel=N` is full-res but **rate-limited** —
   parallel requests fail. Load thumbnails **sequentially** with a small gap.
 - **Channel numbers are 1-based** in `mediaFileFind.cgi` (`condition.Channel`) and
@@ -110,6 +118,8 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   ms counter; across requests/gaps they fall back to the typical frame duration,
   so gaps are skipped rather than frozen. Capped at 20 min (~600 MB on an NVR4108
   main stream, ~2 min to export at ~9× real time). H.265 cameras aren't supported.
+- **A day isn't always 24 h**: use `dayEnd(day)` (start of the next calendar day),
+  not `dayStart + 86400e3`, or clock-change days lose or gain an hour.
 - **Days with video**: no dedicated API — one `findFile` over the last 35 days
   (paged by 100), bucketed by day. A time inside a gap is snapped to the next
   recorded span before requesting (unverified what an NVR streams for a gap —
@@ -140,7 +150,10 @@ directly by the browser. Do not add a bundler/framework unless there's a real ne
   Security check (unreadable config reads as "UPnP/P2P off").
 - **Device data is untrusted.** Rogue accounts on a hacked NVR have attacker-chosen
   names and memos: render device strings with `textContent` / `el()`, never
-  `innerHTML`.
+  `innerHTML`. `parseTable` drops `__proto__`/`constructor`/`prototype` keys;
+  CSV cells go through `csvCell` (formula injection).
+- **A failed read is "unknown", never "off"**: `exposure()` returns `known` per
+  setting and `deviceDetails().vulnerable` is `null` without a build date.
 
 ## Feedback (report a problem, rating)
 

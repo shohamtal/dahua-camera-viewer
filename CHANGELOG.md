@@ -4,6 +4,41 @@ All notable changes to Dahua Camera Viewer. Versions follow `manifest.json`;
 a feature release (x.**y**) opens the bundled "What's new" page once after the
 update — keep `whats-new.html` in step with the newest feature release.
 
+## 1.2.2 — 2026-11-15
+
+### Security
+- Settings read from the NVR could change how the page itself behaves (a hacked
+  NVR, or someone on the network altering its answers). Those keys are now ignored.
+- A wrong password is now reported as a wrong password, and costs one failed login
+  instead of three. If the NVR refuses a saved password, the extension stops
+  retrying it on every page open, so it can't lock the account.
+- The Security page no longer says "No red flags" when it couldn't read a setting:
+  it shows "unknown". The firmware check uses the September 2021 fix date, and
+  the green "ok" badge is gone.
+- The log CSV can no longer run formulas when opened in a spreadsheet.
+- The address box only accepts a host name or IP address (a pasted
+  `http://…` link is cleaned up).
+
+### Fixed
+- Live video that stopped or froze now reconnects by itself; a camera that stays
+  silent goes back to thumbnails.
+- Up to 4 cameras play live at once. More than that used up all of Chrome's
+  connections to the NVR and stalled everything else.
+- Downloading a `.dav` asks where to save first, so it no longer fails on a slow
+  NVR, and a failed download doesn't leave a connection or a partial file behind.
+- Days when the clocks change (23 or 25 hours) show correctly on the timeline.
+- A page left open keeps up: new days appear in the calendar, and playback of
+  today continues into video recorded since the page was loaded.
+- One empty answer no longer turns off the low-quality stream for fast playback.
+- A session on the NVR's own screen is no longer listed as "outside your network";
+  Tailscale addresses (100.64.x.x) count as local.
+- Clicking the toolbar icon brings the viewer's window to the front.
+
+### Added
+- "Use HTTPS" on the login form.
+- The version number is shown in the bottom corner.
+- A hidden tab stops loading thumbnails, and stops live video after a minute.
+
 ## 1.2.1 — 2026-10-07
 
 ### Fixed

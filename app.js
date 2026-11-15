@@ -24,6 +24,17 @@ const kv = {
 const devId = (c) => `${c.host}:${c.port || 80}`;
 const devName = (d) => d.name || d.device?.type || d.host;
 const forgetPassword = ({ pass, ...rest }) => rest;
+const isHttps = (d) => d.scheme === 'https' || (!d.scheme && String(d.port) === '443');
+
+/**
+ * What was typed in the address box -> {host, port?, https?}, or null when it
+ * isn't a plain host name / IPv4 address. Accepts a pasted "http://host:port/…".
+ */
+function parseAddress(text) {
+  const m = text.trim().match(/^(?:(https?):\/\/)?([a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)(?::(\d{1,5}))?(?:\/.*)?$/i);
+  if (!m) return null;
+  return { host: m[2], port: m[3] ? +m[3] : null, https: m[1] ? m[1].toLowerCase() === 'https' : null };
+}
 
 async function loadDevices() {
   let list = await kv.get('devices');
@@ -81,6 +92,7 @@ function fillForm(d = {}) {
   loginForm.name.value = d.name || '';
   loginForm.ip.value = d.host || '';
   loginForm.port.value = d.port || 80;
+  loginForm.https.checked = isHttps(d);
   loginForm.user.value = d.user || '';
   loginForm.pass.value = d.pass || '';
   (d.host ? (d.pass ? $('submit') : loginForm.pass) : loginForm.name).focus();
@@ -117,11 +129,31 @@ function renderSaved(list) {
 loginForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(loginForm).entries());
-  const host = f.ip.trim(), port = parseInt(f.port, 10) || 80;
-  connectTo({ id: devId({ host, port }), name: f.name.trim(), host, port, user: f.user, pass: f.pass }, !!f.remember);
+  const addr = parseAddress(f.ip);
+  if (!addr) {
+    const msg = $('login-msg'); msg.className = 'msg error';
+    msg.textContent = 'Enter the NVR\'s IP address or host name, for example 192.168.1.108.';
+    return;
+  }
+  const https = addr.https ?? !!f.https;
+  const typed = parseInt(f.port, 10);
+  const port = addr.port || (typed && !(https && typed === 80) ? typed : https ? 443 : 80);
+  const { host } = addr;
+  if (!(port >= 1 && port <= 65535)) {
+    const msg = $('login-msg'); msg.className = 'msg error';
+    msg.textContent = 'The port must be between 1 and 65535.';
+    return;
+  }
+  connectTo({ id: devId({ host, port }), name: f.name.trim(), host, port, scheme: https ? 'https' : 'http', user: f.user, pass: f.pass }, !!f.remember);
+});
+// Ticking HTTPS moves the port between the two defaults.
+loginForm.https.addEventListener('change', (e) => {
+  const p = loginForm.port.value.trim();
+  if (e.target.checked && (p === '80' || !p)) loginForm.port.value = 443;
+  else if (!e.target.checked && p === '443') loginForm.port.value = 80;
 });
 
-async function connectTo(candidate, remember) {
+async function connectTo({ authFailed, ...candidate }, remember) {
   const msg = $('login-msg'); msg.textContent = ''; msg.className = 'msg';
   const btn = $('submit'); btn.disabled = true; btn.textContent = 'Connecting…';
   try {
@@ -135,7 +167,8 @@ async function connectTo(candidate, remember) {
     await enterApp();
   } catch (err) {
     console.warn('connect failed:', err.message);
-    msg.textContent = `Could not connect to ${devName(candidate)}: ${err.message}`;
+    msg.textContent = `Could not connect to ${devName(candidate)}: ${err.message}` + (isHttps(candidate) && err.code !== 'AUTH'
+      ? `. With HTTPS, Chrome must trust the NVR's certificate: open https://${candidate.host}${+candidate.port !== 443 ? ':' + candidate.port : ''} in a tab once and accept it.` : '');
     msg.classList.add('error');
     btn.disabled = false; btn.textContent = 'Connect';
   }
@@ -243,20 +276,72 @@ function streamLive(channel, onFrame, signal) {
   signal.addEventListener('abort', stop);
   let got = false;
   let timedOut = false;
-  const timer = setTimeout(() => { if (!got) { timedOut = true; ctrl.abort(); } }, LIVE_TIMEOUT_MS);
+  // Armed again on every frame, so a stream that goes quiet later is dropped too
+  // (the caller reconnects) instead of leaving a frozen picture.
+  let timer;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, LIVE_TIMEOUT_MS); };
+  arm();
   const fail = (e) => {
     if (signal.aborted || /^stream HTTP/.test(e?.message)) throw e; // a real error, not a silent stream
     console.warn(`Live ch ${channel}: no video${subCodec[channel] ? ` (sub stream ${subCodec[channel]})` : ''}:`, timedOut ? `no frame in ${LIVE_TIMEOUT_MS / 1000} s` : e?.message || 'stream ended');
     throw Object.assign(new Error('No live video'), { code: 'NO_LIVE' });
   };
-  return dahua.streamMjpeg(conn, channel, 1, (b) => { got = true; clearTimeout(timer); onFrame(b); }, ctrl.signal)
+  return dahua.streamMjpeg(conn, channel, 1, (b) => { got = true; arm(); onFrame(b); }, ctrl.signal)
     .then(() => { if (!got) fail(); }, (e) => { if (!got) fail(e); else if (!signal.aborted) throw e; })
     .finally(() => { clearTimeout(timer); signal.removeEventListener('abort', stop); });
 }
 const NO_LIVE_TEXT = 'No live video (sub stream not MJPEG?)';
 
+/**
+ * A live stream that stays up: reconnects when the NVR ends it or it stalls.
+ * Resolves when `signal` aborts. Rejects with code 'NO_LIVE' when no frame ever
+ * came, or 'LIVE_LOST' after LIVE_GIVE_UP_MS without one (long enough for an NVR
+ * to restart or the Wi-Fi to come back; a count of tries would be over in seconds
+ * when the network is down, because those requests fail at once).
+ */
+const LIVE_GIVE_UP_MS = 120e3;
+async function keepLive(channel, onFrame, signal) {
+  let ever = false, lastFrame = 0, wait = 1500;
+  while (!signal.aborted) {
+    try { await streamLive(channel, (b) => { ever = true; lastFrame = Date.now(); wait = 1500; onFrame(b); }, signal); }
+    catch (e) {
+      if (signal.aborted) return;
+      if (!ever) throw e;
+      if (Date.now() - lastFrame > LIVE_GIVE_UP_MS) throw Object.assign(new Error('Live video stopped'), { code: 'LIVE_LOST' });
+    }
+    if (signal.aborted) return;
+    await new Promise((r) => setTimeout(r, wait));
+    wait = Math.min(wait * 2, 10000);
+  }
+}
+
+// Chrome opens at most 6 connections to one host, and each live stream holds one.
+// Past 4 tiles (+ fullscreen) nothing would be left for snapshots, recordings or admin calls.
+const MAX_LIVE_TILES = 4;
+let liveNoteTimer = null;
+function showLiveNote(text) {
+  const box = $('live-note');
+  box.textContent = text; box.classList.remove('hidden');
+  clearTimeout(liveNoteTimer);
+  liveNoteTimer = setTimeout(() => box.classList.add('hidden'), 8000);
+}
+
+// First-frame grabs, a few at a time: one per camera at once would fill all of
+// Chrome's connections, and the ones left waiting would time out for no reason.
+const FF_PARALLEL = 3;
+let ffRunning = 0;
+const ffQueue = [];
+function ffNext() {
+  while (ffRunning < FF_PARALLEL && ffQueue.length) {
+    const job = ffQueue.shift();
+    ffRunning++;
+    job().finally(() => { ffRunning--; ffNext(); });
+  }
+}
+
 function stopLive() {
   thumbToken++; // cancel the running loop
+  ffQueue.length = 0;
   liveItems.forEach((it) => it.dispose());
   liveItems = [];
   $('grid').replaceChildren();
@@ -284,15 +369,22 @@ function buildTile(cam) {
   const swap = (url) => { img.src = url; status.style.display = 'none'; if (lastUrl) URL.revokeObjectURL(lastUrl); lastUrl = url; };
   function startInline() {
     if (isLive) return;
+    if (liveItems.filter((it) => it.isLive()).length >= MAX_LIVE_TILES) {
+      showLiveNote(`Up to ${MAX_LIVE_TILES} cameras can play live at once (Chrome limits the connections to one NVR). Stop one first, or use fullscreen.`);
+      return;
+    }
     isLive = true; liveBtn.textContent = '⏹'; liveBtn.title = 'Stop live'; status.style.display = 'none';
-    liveAbort = new AbortController();
-    streamLive(cam.channel, (blob) => {
+    const ac = liveAbort = new AbortController();
+    keepLive(cam.channel, (blob) => {
       const url = URL.createObjectURL(blob); const probe = new Image();
-      probe.onload = () => swap(url); probe.onerror = () => URL.revokeObjectURL(url); probe.src = url;
-    }, liveAbort.signal).catch((e) => {
-      if (e.name === 'AbortError') return;
-      if (e.code === 'NO_LIVE') { noteLiveFailed(cam.channel, !!img.src); stopInline(); if (!img.src) { status.style.display = 'grid'; status.textContent = NO_LIVE_TEXT; } } // the banner explains
-      else if (!img.src) { status.style.display = 'grid'; status.textContent = 'No signal'; }
+      probe.onload = () => { if (ac.signal.aborted) URL.revokeObjectURL(url); else swap(url); };
+      probe.onerror = () => URL.revokeObjectURL(url); probe.src = url;
+    }, ac.signal).catch((e) => {
+      if (ac.signal.aborted || e.name === 'AbortError') return;
+      // Back to thumbnails either way; never a frozen picture that still says "live".
+      stopInline();
+      if (e.code === 'NO_LIVE') noteLiveFailed(cam.channel, !!img.src); // the banner explains
+      if (!img.src) { status.style.display = 'grid'; status.textContent = e.code === 'NO_LIVE' ? NO_LIVE_TEXT : 'No signal'; }
     });
   }
   function stopInline() {
@@ -310,11 +402,15 @@ function buildTile(cam) {
   // Chrome allows only 6 connections per host, so they'd stall the snapshots too.
   const ffAbort = new AbortController();
   let gotFF = false;
-  if (isMjpeg(subCodec[cam.channel])) streamLive(cam.channel, (blob) => {
-    if (gotFF) return; gotFF = true;
-    if (!isLive) swap(URL.createObjectURL(blob));
-    ffAbort.abort();
-  }, ffAbort.signal).catch((e) => { if (e.code === 'NO_LIVE') noteLiveFailed(cam.channel, !!img.src); }); // the snapshot loop fills the tile anyway
+  if (isMjpeg(subCodec[cam.channel])) {
+    ffQueue.push(() => (ffAbort.signal.aborted ? Promise.resolve() : streamLive(cam.channel, (blob) => {
+      if (gotFF) return; gotFF = true;
+      if (!isLive) swap(URL.createObjectURL(blob));
+      ffAbort.abort();
+    }, ffAbort.signal).catch((e) => { if (e.code === 'NO_LIVE') noteLiveFailed(cam.channel, !!img.src); }))); // the snapshot loop fills the tile anyway
+    ffNext();
+  }
+  let wasLive = false; // stopped because the tab was hidden: start again when it's back
 
   liveItems.push({
     channel: cam.channel,
@@ -322,6 +418,8 @@ function buildTile(cam) {
     hasImg: () => !!img.src,
     setThumb: (url) => { if (!isLive) swap(url); },
     noSignal: () => { if (!img.src) { status.style.display = 'grid'; status.textContent = 'No signal'; } },
+    pause: () => { if (isLive) { wasLive = true; stopInline(); } },
+    resume: () => { if (wasLive) { wasLive = false; startInline(); } },
     dispose: () => { try { ffAbort.abort(); } catch {} if (liveAbort) liveAbort.abort(); if (lastUrl) URL.revokeObjectURL(lastUrl); },
   });
   return tile;
@@ -332,6 +430,8 @@ async function runThumbLoop(token) {
     for (const it of liveItems) {
       if (token !== thumbToken) return;
       if (it.isLive()) continue;
+      while (document.hidden && token === thumbToken) await new Promise((r) => setTimeout(r, 1000)); // nobody is looking
+      if (token !== thumbToken) return;
       try {
         const blob = await dahua.snapshotBlob(conn, it.channel);
         if (token !== thumbToken) return;
@@ -343,30 +443,52 @@ async function runThumbLoop(token) {
   }
 }
 
+// A tab nobody looks at shouldn't keep streaming: thumbnails wait right away (see
+// the loop above), live tiles stop after a while and start again when it's back.
+const HIDDEN_STOP_MS = 60e3;
+let hiddenTimer = null;
+document.addEventListener('visibilitychange', () => {
+  clearTimeout(hiddenTimer);
+  if (document.hidden) hiddenTimer = setTimeout(() => {
+    liveItems.forEach((it) => it.pause());
+    if (fsCam) { fsPaused = fsCam; closeFullscreen(); }
+  }, HIDDEN_STOP_MS);
+  else {
+    liveItems.forEach((it) => it.resume());
+    if (fsPaused) { const cam = fsPaused; fsPaused = null; openFullscreen(cam); }
+  }
+});
+
 // ---- fullscreen single camera -------------------------------------------
 let fsAbort = null, fsLastUrl = null;
+let fsCam = null, fsPaused = null; // open now / closed because the tab was hidden
 function openFullscreen(cam) {
   closeFullscreen();
+  fsCam = cam;
   const modal = $('modal'), img = $('modal-img'), status = $('modal-status');
   $('modal-title').textContent = `${cam.name} · ch ${cam.channel}`;
   img.removeAttribute('src'); status.style.display = 'grid'; status.textContent = 'Connecting…';
   modal.classList.remove('hidden');
-  fsAbort = new AbortController();
-  streamLive(cam.channel, (blob) => {
-    status.style.display = 'none';
+  const ac = fsAbort = new AbortController();
+  keepLive(cam.channel, (blob) => {
     const url = URL.createObjectURL(blob);
     const probe = new Image();
-    probe.onload = () => { img.src = url; if (fsLastUrl) URL.revokeObjectURL(fsLastUrl); fsLastUrl = url; };
+    probe.onload = () => {
+      if (ac.signal.aborted) { URL.revokeObjectURL(url); return; } // closed meanwhile
+      status.style.display = 'none';
+      img.src = url; if (fsLastUrl) URL.revokeObjectURL(fsLastUrl); fsLastUrl = url;
+    };
     probe.onerror = () => URL.revokeObjectURL(url);
     probe.src = url;
-  }, fsAbort.signal).catch((e) => {
-    if (e.name === 'AbortError') return;
+  }, ac.signal).catch((e) => {
+    if (ac.signal.aborted || e.name === 'AbortError') return;
     status.style.display = 'grid';
     status.textContent = e.code === 'NO_LIVE' ? NO_LIVE_TEXT : 'No signal';
     if (e.code === 'NO_LIVE') noteLiveFailed(cam.channel, liveItems.find((it) => it.channel === cam.channel)?.hasImg());
   });
 }
 function closeFullscreen() {
+  fsCam = null;
   if (fsAbort) { fsAbort.abort(); fsAbort = null; }
   if (fsLastUrl) { URL.revokeObjectURL(fsLastUrl); fsLastUrl = null; }
   $('modal').classList.add('hidden');
@@ -470,6 +592,9 @@ initFeedback();
   fillForm(last);
   if (!last.pass) return; // signed out: keep the NVR + user, not the password
   const msg = $('login-msg'), btn = $('submit');
+  // The NVR refused this password last time. Trying again on every page open would
+  // keep adding failed logins, and Dahua locks the account after a few.
+  if (last.authFailed) { msg.textContent = `${devName(last)} refused the saved password last time. Check it, then click Connect.`; msg.classList.add('error'); return; }
   // Can't prompt for permission without a user gesture — Connect re-grants it.
   if (!(await hasHostPermission(last.host))) { msg.textContent = `Click Connect to allow access to ${last.host} again.`; return; }
   msg.textContent = `Reconnecting to ${devName(last)}…`; btn.disabled = true; btn.textContent = 'Reconnecting…';
@@ -481,6 +606,7 @@ initFeedback();
     await enterApp();
   } catch (e) {
     console.warn('auto-reconnect failed:', e.message);
+    if (e.code === 'AUTH') await saveDevice({ ...last, authFailed: true });
     msg.textContent = `Couldn't reconnect to ${devName(last)} automatically: ${e.message}. Check it's reachable, then click Connect.`;
     msg.classList.add('error');
     btn.disabled = false; btn.textContent = 'Connect';
